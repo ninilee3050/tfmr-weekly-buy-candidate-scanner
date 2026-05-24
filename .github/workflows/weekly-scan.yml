@@ -1,0 +1,41 @@
+name: TFMR Top 100 Weekly Candidate Scan
+
+on:
+  workflow_dispatch:
+  schedule:
+    # GitHub Actions cron uses UTC. This runs every Friday at 09:30 UTC.
+    - cron: "30 9 * * 5"
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run TFMR Top100 scanner
+        run: python weekly_scan.py --limit 100 --output-dir outputs
+
+      - name: Upload TFMR scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfmr-top100-scan-results
+          path: |
+            outputs/top100_tfmr_candidates_*.csv
+            outputs/top100_tfmr_failures_*.csv
+          if-no-files-found: warn
+          retention-days: 30

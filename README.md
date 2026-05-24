@@ -213,6 +213,33 @@ python -m pytest
 - 중앙 검색 호출 경로가 `force_refresh=True`를 사용하는 것
 - StockAnalysis Top100 표 파싱
 
+## GitHub Actions 자동 스캔
+
+이 레포에는 `.github/workflows/weekly-scan.yml` 워크플로가 있습니다.
+
+동작 방식:
+
+- 수동 실행: GitHub 레포의 `Actions` 탭에서 `TFMR Top 100 Weekly Candidate Scan` 워크플로를 선택한 뒤 `Run workflow`를 누릅니다.
+- 자동 실행: 매주 금요일 `09:30 UTC`에 실행됩니다.
+- 실행 명령: `python weekly_scan.py --limit 100 --output-dir outputs`
+- 저장 방식: 결과 CSV를 레포에 커밋하지 않고, GitHub Actions artifact로 업로드합니다.
+- artifact 이름: `tfmr-top100-scan-results`
+- 보관 기간: 30일
+
+업로드되는 파일:
+
+```text
+outputs/top100_tfmr_candidates_YYYY-MM-DD.csv
+outputs/top100_tfmr_failures_YYYY-MM-DD.csv
+```
+
+주의:
+
+- GitHub Actions의 cron은 UTC 기준입니다.
+- 스캔 결과 CSV는 GitHub 저장소 파일 목록에 자동 커밋되지 않습니다.
+- 결과는 해당 Actions 실행 화면의 `Artifacts` 영역에서 다운로드합니다.
+- Top100 목록 조회나 Yahoo 데이터 다운로드가 실패해도 failures CSV가 artifact에 같이 올라가도록 `if: always()`를 사용합니다.
+
 ## v1에서 의도적으로 제외한 기능
 
 아래 기능은 TFMR 전체 전략에는 필요할 수 있지만 v1에서는 구현하지 않습니다.
