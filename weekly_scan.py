@@ -95,8 +95,8 @@ def save_scan_outputs(
     output_dir.mkdir(parents=True, exist_ok=True)
     scan_day = pd.Timestamp(scan_date).normalize()
     date_text = scan_day.strftime("%Y-%m-%d")
-    candidate_path = output_dir / f"top100_tfmr_candidates_{date_text}.csv"
-    failure_path = output_dir / f"top100_tfmr_failures_{date_text}.csv"
+    candidate_path = output_dir / f"TFMR_TOP100_scan_candidates_{date_text}.csv"
+    failure_path = output_dir / f"TFMR_TOP100_scan_failures_{date_text}.csv"
 
     candidates.to_csv(candidate_path, index=False, encoding="utf-8-sig")
     failures.to_csv(failure_path, index=False, encoding="utf-8-sig")

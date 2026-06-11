@@ -21,7 +21,7 @@ BUY_DISPLAY_COLUMNS = ["매수포인트날짜", *BUY_POINT_COLUMNS]
 class TfmrBuyBaseApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("TFMR 1회차 매수 기준봉 검증 도구")
+        self.title("TFMR 시나리오 1회차 주봉 매수 후보 스캐너")
         self.geometry("2920x900")
         self.minsize(2200, 720)
 

@@ -1,4 +1,4 @@
-# TFMR 주봉 1회차 매수후보 탐지 도구
+# TFMR 시나리오 1회차 주봉 매수 후보 스캐너
 
 TFMR 전략(Trend Following·Mean Reversion)의 주봉 1회차 매수후보 조건을 과거 확정 주봉과 이번 주 진행 중인 주봉에서 탐지하는 Python Tkinter 스캐너입니다.
 
@@ -89,8 +89,8 @@ Tkinter 기본 스타일의 3단 구조입니다.
 저장 파일명:
 
 ```text
-Downloads/top100_tfmr_candidates_YYYY-MM-DD.csv
-Downloads/top100_tfmr_failures_YYYY-MM-DD.csv
+Downloads/TFMR_TOP100_scan_candidates_YYYY-MM-DD.csv
+Downloads/TFMR_TOP100_scan_failures_YYYY-MM-DD.csv
 ```
 
 ## 데이터 기준
@@ -195,15 +195,15 @@ outputs/{TICKER}_tfmr_buy_points.csv
 Top100 스캐너 결과는 `스캔 저장하기` 버튼을 눌렀을 때 사용자 다운로드 폴더에 저장됩니다.
 
 ```text
-Downloads/top100_tfmr_candidates_YYYY-MM-DD.csv
-Downloads/top100_tfmr_failures_YYYY-MM-DD.csv
+Downloads/TFMR_TOP100_scan_candidates_YYYY-MM-DD.csv
+Downloads/TFMR_TOP100_scan_failures_YYYY-MM-DD.csv
 ```
 
 `weekly_scan.py`로 화면 없이 자동 스캔을 실행하면 아래 파일이 프로젝트 `outputs/` 폴더에 저장됩니다.
 
 ```text
-outputs/top100_tfmr_candidates_YYYY-MM-DD.csv
-outputs/top100_tfmr_failures_YYYY-MM-DD.csv
+outputs/TFMR_TOP100_scan_candidates_YYYY-MM-DD.csv
+outputs/TFMR_TOP100_scan_failures_YYYY-MM-DD.csv
 ```
 
 CSV는 Excel에서 한글이 잘 보이도록 `utf-8-sig`로 저장합니다.
@@ -323,8 +323,8 @@ python -m pytest
 업로드되는 파일:
 
 ```text
-outputs/top100_tfmr_candidates_YYYY-MM-DD.csv
-outputs/top100_tfmr_failures_YYYY-MM-DD.csv
+outputs/TFMR_TOP100_scan_candidates_YYYY-MM-DD.csv
+outputs/TFMR_TOP100_scan_failures_YYYY-MM-DD.csv
 ```
 
 주의:
