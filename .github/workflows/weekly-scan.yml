@@ -35,7 +35,7 @@ jobs:
         with:
           name: tfmr-top100-scan-results
           path: |
-            outputs/top100_tfmr_candidates_*.csv
-            outputs/top100_tfmr_failures_*.csv
+            outputs/TFMR_Top100_scan_candidates_*.csv
+            outputs/TFMR_Top100_scan_failures_*.csv
           if-no-files-found: warn
           retention-days: 30
