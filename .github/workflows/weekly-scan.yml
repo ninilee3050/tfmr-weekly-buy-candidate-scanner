@@ -1,10 +1,10 @@
-name: TFMR Top 100 Weekly Candidate Scan
+name: TFMR Weekly Top 100 Buy Candidate Scan
 
 on:
   workflow_dispatch:
   schedule:
-    # GitHub Actions cron uses UTC. This runs every Friday at 09:30 UTC.
-    - cron: "30 9 * * 5"
+    - cron: "0 19 * * 5"
+      timezone: "Asia/Seoul"
 
 permissions:
   contents: read
@@ -33,7 +33,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: tfmr-top100-scan-results
+          name: tfmr-weekly-top-100-buy-candidate-scan-results
           path: |
             outputs/TFMR_Top100_scan_candidates_*.csv
             outputs/TFMR_Top100_scan_failures_*.csv
