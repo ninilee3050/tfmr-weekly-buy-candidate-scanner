@@ -92,7 +92,7 @@ def test_ma150_must_be_above_ma200() -> None:
         [
             _row(close=99, ma20=100, ma50=101),
             _row(open_=104, close=105, ma20=102, ma50=101),
-            _row(open_=96, close=94, ma5=97, ma20=100, ma50=99, ma150=100, ma200=100),
+            _row(open_=96, close=94, ma5=97, ma20=100, ma50=99, ma150=80, ma200=80),
         ]
     )
 
@@ -159,8 +159,8 @@ def _row(
     ma5: float = 101,
     ma20: float = 100,
     ma50: float = 100,
-    ma150: float = 120,
-    ma200: float = 100,
+    ma150: float = 90,
+    ma200: float = 80,
 ) -> dict[str, float]:
     return {
         "Open": open_,

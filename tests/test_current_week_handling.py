@@ -173,8 +173,8 @@ def _current_week_buy_base_frame(current_week: pd.Timestamp) -> pd.DataFrame:
             "MA5": 101,
             "MA20": 100,
             "MA50": 101,
-            "MA150": 120,
-            "MA200": 100,
+            "MA150": 90,
+            "MA200": 80,
         },
         {
             "Open": 104,
@@ -182,8 +182,8 @@ def _current_week_buy_base_frame(current_week: pd.Timestamp) -> pd.DataFrame:
             "MA5": 104,
             "MA20": 102,
             "MA50": 101,
-            "MA150": 120,
-            "MA200": 100,
+            "MA150": 90,
+            "MA200": 80,
         },
         {
             "Open": 96,
@@ -191,8 +191,8 @@ def _current_week_buy_base_frame(current_week: pd.Timestamp) -> pd.DataFrame:
             "MA5": 97,
             "MA20": 100,
             "MA50": 99,
-            "MA150": 120,
-            "MA200": 100,
+            "MA150": 90,
+            "MA200": 80,
         },
     ]
     return pd.DataFrame(rows, index=pd.DatetimeIndex(dates, name="Date"))

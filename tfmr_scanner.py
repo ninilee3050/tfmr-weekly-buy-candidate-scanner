@@ -19,8 +19,39 @@ BUY_POINT_COLUMNS = [
 ]
 CONDITION_SUMMARY = (
     "1회차 기준봉: MA20>MA50 상승사이클 + Close>MA20 이력 + "
-    "Close<MA5/MA20 + 음봉 + MA150>MA200"
+    "Close<MA5/MA20 + 음봉 + MA150>MA200 + Close>MA200"
 )
+ADD_BUY_DROP_RATIO = 0.03
+MAX_BUY_ROUNDS = 5
+OUTCOME_HOLDING = "보유 중"
+OUTCOME_SOLD = "매도 완료"
+TRADE_CASE_COLUMNS = [
+    "FirstBuyDate",
+    "BuyRounds",
+    "LastBuyDate",
+    "LastBuyPrice",
+    "Quantity",
+    "AveragePrice",
+    "NextAddBuyPrice",
+    "SellDate",
+    "SellPrice",
+    "Outcome",
+    "ReturnPct",
+    "HoldingWeeks",
+    "LastEvent",
+    "LastEventDate",
+    "Provisional",
+]
+TRADE_BUY_COLUMNS = [
+    "FirstBuyDate",
+    "Round",
+    "Date",
+    "Price",
+    "Quantity",
+    "DropFromLastBuyPct",
+    "HoldingQuantity",
+    "AveragePrice",
+]
 
 
 def calculate_moving_averages(data: pd.DataFrame) -> pd.DataFrame:
@@ -123,6 +154,66 @@ def scan_tfmr_buy_points(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame
     return buy_points, full
 
 
+def scan_trade_cases(
+    data: pd.DataFrame,
+    last_bar_in_progress: bool = False,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    Follow every first buy base candle through add-on buys to the sell week.
+
+    A case opens on a first buy base candle (1 share at the weekly close).  While
+    it is open, a bearish week closing 3% or more below the last buy price adds
+    the next round (round N buys N shares, up to round 5); otherwise the first
+    bullish week closing above MA5 or MA20 sells everything.  A base candle that
+    appears while a case is still open does not open a second case.
+
+    A sell seen on the unfinished current week is not final: the case stays
+    open and is flagged ``Provisional``, as is any buy on that week.
+    """
+    _buy_points, full = scan_tfmr_buy_points(data)
+    full["tfmr_buy_round"] = 0
+    full["tfmr_sell"] = False
+    full["tfmr_holding"] = False
+
+    in_progress_date = full.index[-1] if last_bar_in_progress and len(full) else None
+    case_rows: list[dict[str, object]] = []
+    buy_rows: list[dict[str, object]] = []
+    case: dict[str, object] | None = None
+
+    for position, (date, row) in enumerate(full.iterrows()):
+        provisional = in_progress_date is not None and date == in_progress_date
+
+        if case is None:
+            if bool(row["tfmr_buy_base"]):
+                case = _open_case(date, position)
+                _record_buy(case, buy_rows, date, row["Close"], provisional)
+                full.at[date, "tfmr_buy_round"] = 1
+                full.at[date, "tfmr_holding"] = True
+            continue
+
+        if _is_add_buy(case, row):
+            _record_buy(case, buy_rows, date, row["Close"], provisional)
+            full.at[date, "tfmr_buy_round"] = case["BuyRounds"]
+        elif _is_sell(row):
+            full.at[date, "tfmr_sell"] = True
+            if provisional:
+                case["LastEvent"] = "매도"
+                case["LastEventDate"] = pd.Timestamp(date).normalize()
+                case["Provisional"] = True
+            else:
+                case_rows.append(_closed_case_row(case, date, position, row["Close"]))
+                case = None
+                continue
+        full.at[date, "tfmr_holding"] = True
+
+    if case is not None:
+        case_rows.append(_open_case_row(case, full))
+
+    cases = pd.DataFrame(case_rows, columns=TRADE_CASE_COLUMNS)
+    buys = pd.DataFrame(buy_rows, columns=TRADE_BUY_COLUMNS)
+    return cases, buys, full
+
+
 def current_week_buy_point(
     buy_points: pd.DataFrame,
     scan_date: pd.Timestamp | str | None = None,
@@ -192,9 +283,132 @@ def _is_bearish(row: pd.Series) -> bool:
 
 
 def _long_trend_ok(row: pd.Series) -> bool:
-    if pd.isna(row.get("MA150")) or pd.isna(row.get("MA200")):
+    for column in ("Close", "MA150", "MA200"):
+        if pd.isna(row.get(column)):
+            return False
+    return row["MA150"] > row["MA200"] and row["Close"] > row["MA200"]
+
+
+def _is_bullish(row: pd.Series) -> bool:
+    if pd.isna(row.get("Open")) or pd.isna(row.get("Close")):
         return False
-    return row["MA150"] > row["MA200"]
+    return row["Close"] > row["Open"]
+
+
+def _is_add_buy(case: dict[str, object], row: pd.Series) -> bool:
+    if case["BuyRounds"] >= MAX_BUY_ROUNDS or not _is_bearish(row):
+        return False
+    return row["Close"] / case["LastBuyPrice"] - 1 <= -ADD_BUY_DROP_RATIO
+
+
+def _is_sell(row: pd.Series) -> bool:
+    if not _is_bullish(row):
+        return False
+    return any(
+        not pd.isna(row.get(column)) and row["Close"] > row[column]
+        for column in ("MA5", "MA20")
+    )
+
+
+def _open_case(date: pd.Timestamp, position: int) -> dict[str, object]:
+    return {
+        "FirstBuyDate": pd.Timestamp(date).normalize(),
+        "FirstBuyPosition": position,
+        "BuyRounds": 0,
+        "LastBuyDate": pd.NaT,
+        "LastBuyPrice": float("nan"),
+        "Quantity": 0,
+        "Cost": 0.0,
+        "LastEvent": "",
+        "LastEventDate": pd.NaT,
+        "Provisional": False,
+    }
+
+
+def _record_buy(
+    case: dict[str, object],
+    buy_rows: list[dict[str, object]],
+    date: pd.Timestamp,
+    price: float,
+    provisional: bool,
+) -> None:
+    date = pd.Timestamp(date).normalize()
+    buy_round = case["BuyRounds"] + 1
+    drop = (
+        float("nan")
+        if buy_round == 1
+        else (price / case["LastBuyPrice"] - 1) * 100
+    )
+    case["BuyRounds"] = buy_round
+    case["Quantity"] += buy_round
+    case["Cost"] += price * buy_round
+    case["LastBuyDate"] = date
+    case["LastBuyPrice"] = price
+    case["LastEvent"] = f"{buy_round}차 매수"
+    case["LastEventDate"] = date
+    case["Provisional"] = provisional
+    buy_rows.append(
+        {
+            "FirstBuyDate": case["FirstBuyDate"],
+            "Round": buy_round,
+            "Date": date,
+            "Price": price,
+            "Quantity": buy_round,
+            "DropFromLastBuyPct": drop,
+            "HoldingQuantity": case["Quantity"],
+            "AveragePrice": case["Cost"] / case["Quantity"],
+        }
+    )
+
+
+def _case_row(case: dict[str, object]) -> dict[str, object]:
+    row = {column: case.get(column) for column in TRADE_CASE_COLUMNS}
+    row["AveragePrice"] = case["Cost"] / case["Quantity"]
+    return row
+
+
+def _closed_case_row(
+    case: dict[str, object],
+    date: pd.Timestamp,
+    position: int,
+    price: float,
+) -> dict[str, object]:
+    date = pd.Timestamp(date).normalize()
+    row = _case_row(case)
+    row.update(
+        {
+            "NextAddBuyPrice": float("nan"),
+            "SellDate": date,
+            "SellPrice": price,
+            "Outcome": OUTCOME_SOLD,
+            "ReturnPct": (price / row["AveragePrice"] - 1) * 100,
+            "HoldingWeeks": position - case["FirstBuyPosition"],
+            "LastEvent": "매도",
+            "LastEventDate": date,
+            "Provisional": False,
+        }
+    )
+    return row
+
+
+def _open_case_row(case: dict[str, object], full: pd.DataFrame) -> dict[str, object]:
+    row = _case_row(case)
+    last_close = full.iloc[-1]["Close"]
+    row.update(
+        {
+            "NextAddBuyPrice": (
+                case["LastBuyPrice"] * (1 - ADD_BUY_DROP_RATIO)
+                if case["BuyRounds"] < MAX_BUY_ROUNDS
+                else float("nan")
+            ),
+            "SellDate": pd.NaT,
+            "SellPrice": float("nan"),
+            "Outcome": OUTCOME_HOLDING,
+            "ReturnPct": (last_close / row["AveragePrice"] - 1) * 100,
+            "HoldingWeeks": len(full) - 1 - case["FirstBuyPosition"],
+        }
+    )
+    return row
 
 
 def _buy_point_row(date: pd.Timestamp, row: pd.Series) -> dict[str, object]:
