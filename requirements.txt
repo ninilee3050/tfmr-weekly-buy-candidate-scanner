@@ -1,3 +1,4 @@
 pandas>=2.0
-yfinance>=0.2.40
+numpy>=1.23
+yfinance>=0.2
 pytest>=8.0

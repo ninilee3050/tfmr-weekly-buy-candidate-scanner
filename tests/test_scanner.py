@@ -5,7 +5,124 @@ import math
 import pandas as pd
 import pytest
 
-from tfmr_scanner import scan_tfmr_buy_points, scan_trade_cases
+from scanner import (
+    add_buy_base_columns,
+    is_cycle_end,
+    is_golden_cross,
+    scan_trade_cases,
+)
+
+
+def test_ma20_ma50_golden_cross_calculation() -> None:
+    previous = pd.Series({"MA_20": 100.0, "MA_50": 100.0})
+    current = pd.Series({"MA_20": 101.0, "MA_50": 100.0})
+    assert is_golden_cross(previous, current)
+
+    current_equal = pd.Series({"MA_20": 100.0, "MA_50": 100.0})
+    assert not is_golden_cross(previous, current_equal)
+
+
+def test_rising_cycle_end_calculation() -> None:
+    previous = pd.Series({"MA_20": 100.0, "MA_50": 100.0})
+    current = pd.Series({"MA_20": 99.0, "MA_50": 100.0})
+    assert is_cycle_end(previous, current)
+
+    current_equal = pd.Series({"MA_20": 100.0, "MA_50": 100.0})
+    assert not is_cycle_end(previous, current_equal)
+
+
+def test_no_buy_base_without_close_above_ma20_history() -> None:
+    data = _frame(
+        [
+            _row(close=99, ma20=100, ma50=101),
+            _row(close=99, ma20=102, ma50=101),
+            _row(open_=96, close=94, ma5=97, ma20=100, ma50=99),
+        ]
+    )
+
+    assert _base_dates(data) == []
+
+
+def test_pullback_bullish_candle_is_not_buy_base() -> None:
+    data = _frame(
+        [
+            _row(close=99, ma20=100, ma50=101),
+            _row(open_=104, close=105, ma20=102, ma50=101),
+            _row(open_=90, close=95, ma5=96, ma20=100, ma50=99),
+        ]
+    )
+
+    assert _base_dates(data) == []
+
+
+def test_first_bearish_candle_later_in_same_pullback_is_buy_base() -> None:
+    data = _frame(
+        [
+            _row(close=99, ma20=100, ma50=101),
+            _row(open_=104, close=105, ma20=102, ma50=101),
+            _row(open_=90, close=95, ma5=96, ma20=100, ma50=99),
+            _row(open_=96, close=94, ma5=97, ma20=100, ma50=99),
+        ]
+    )
+
+    assert _base_dates(data) == [pd.Timestamp("2024-01-22")]
+
+
+def test_pullback_resets_when_close_recovers_above_ma20_before_bearish_candle() -> None:
+    data = _frame(
+        [
+            _row(close=99, ma20=100, ma50=101),
+            _row(open_=104, close=105, ma20=102, ma50=101),
+            _row(open_=90, close=95, ma5=96, ma20=100, ma50=99),
+            _row(open_=102, close=103, ma5=101, ma20=100, ma50=99),
+        ]
+    )
+
+    assert _base_dates(data) == []
+
+
+def test_ma150_must_be_above_ma200() -> None:
+    data = _frame(
+        [
+            _row(close=99, ma20=100, ma50=101),
+            _row(open_=104, close=105, ma20=102, ma50=101),
+            _row(open_=96, close=94, ma5=97, ma20=100, ma50=99, ma150=10, ma200=10),
+        ]
+    )
+
+    assert _base_dates(data) == []
+
+
+def test_only_first_buy_base_is_recorded_in_same_rising_cycle() -> None:
+    data = _frame(
+        [
+            _row(close=99, ma20=100, ma50=101),
+            _row(open_=104, close=105, ma20=102, ma50=101),
+            _row(open_=96, close=94, ma5=97, ma20=100, ma50=99),
+            _row(open_=102, close=103, ma5=101, ma20=100, ma50=99),
+            _row(open_=97, close=95, ma5=98, ma20=100, ma50=99),
+        ]
+    )
+
+    assert _base_dates(data) == [pd.Timestamp("2024-01-15")]
+
+
+def test_new_golden_cross_after_cycle_end_can_find_new_buy_base() -> None:
+    data = _frame(
+        [
+            _row(close=99, ma20=100, ma50=101),
+            _row(open_=104, close=105, ma20=102, ma50=101),
+            _row(open_=96, close=94, ma5=97, ma20=100, ma50=99),
+            _row(open_=99, close=98, ma5=99, ma20=98, ma50=100),
+            _row(open_=103, close=104, ma5=103, ma20=101, ma50=100),
+            _row(open_=96, close=94, ma5=97, ma20=100, ma50=99),
+        ]
+    )
+
+    assert _base_dates(data) == [
+        pd.Timestamp("2024-01-15"),
+        pd.Timestamp("2024-02-05"),
+    ]
 
 
 def test_base_candle_below_ma200_is_not_buy_base() -> None:
@@ -17,9 +134,7 @@ def test_base_candle_below_ma200_is_not_buy_base() -> None:
         ]
     )
 
-    buy_points, _full = scan_tfmr_buy_points(data)
-
-    assert buy_points.empty
+    assert _base_dates(data) == []
 
 
 def test_add_on_buys_follow_three_percent_drop_from_last_buy() -> None:
@@ -118,7 +233,7 @@ def test_bullish_week_below_both_averages_keeps_holding() -> None:
 def test_sell_on_unfinished_week_stays_open_and_provisional() -> None:
     data = _case_frame([(105, 100), (96, 98)], ma5=97, ma20=120)
 
-    cases, _buys, _full = scan_trade_cases(data, last_bar_in_progress=True)
+    cases, _buys, _full = scan_trade_cases(data, now=pd.Timestamp("2024-01-23 12:00"))
 
     case = cases.iloc[0]
     assert case["Outcome"] == "보유 중"
@@ -130,7 +245,7 @@ def test_sell_on_unfinished_week_stays_open_and_provisional() -> None:
 def test_buy_on_unfinished_week_is_provisional() -> None:
     data = _case_frame([(105, 100)])
 
-    cases, _buys, _full = scan_trade_cases(data, last_bar_in_progress=True)
+    cases, _buys, _full = scan_trade_cases(data, now=pd.Timestamp("2024-01-16 12:00"))
 
     assert cases.iloc[0]["LastEvent"] == "1차 매수"
     assert bool(cases.iloc[0]["Provisional"])
@@ -167,6 +282,11 @@ def test_base_candle_while_holding_does_not_open_second_case() -> None:
     assert bool(full.loc[_week(5), "tfmr_buy_base"])
     assert len(cases) == 1
     assert list(buys["Round"]) == [1]
+
+
+def _base_dates(data: pd.DataFrame) -> list[pd.Timestamp]:
+    full = add_buy_base_columns(data)
+    return list(full.index[full["tfmr_buy_base"]])
 
 
 def _case_frame(
@@ -219,9 +339,9 @@ def _row(
     return {
         "Open": open_,
         "Close": close,
-        "MA5": ma5,
-        "MA20": ma20,
-        "MA50": ma50,
-        "MA150": ma150,
-        "MA200": ma200,
+        "MA_5": ma5,
+        "MA_20": ma20,
+        "MA_50": ma50,
+        "MA_150": ma150,
+        "MA_200": ma200,
     }
