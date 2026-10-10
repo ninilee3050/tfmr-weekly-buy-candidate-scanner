@@ -208,18 +208,6 @@ def test_company_names_are_shortened_to_fit_one_line() -> None:
     assert short_company_name(float("nan")) == ""
 
 
-def test_company_names_are_shortened_to_fit_one_line() -> None:
-    assert short_company_name("Mastercard Incorporated") == "Mastercard"
-    assert short_company_name("Meta Platforms, Inc.") == "Meta Platforms"
-    assert short_company_name("JPMorgan Chase & Co.") == "JPMorgan Chase"
-    assert short_company_name("UnitedHealth Group Incorporated") == "UnitedHealth"
-    assert short_company_name("SAP SE") == "SAP SE"
-    assert short_company_name("[관심] 비트코인") == "비트코인"
-    assert short_company_name("Taiwan Semiconductor Manufacturing Company Limited") == "Taiwan Semicond…"
-    assert short_company_name(None) == ""
-    assert short_company_name(float("nan")) == ""
-
-
 def test_text_from_outside_is_escaped_for_html() -> None:
     message = build_scan_message(
         pd.DataFrame([event("A&B", "AT&T Inc.", "1차 매수", 60, 가격=20.0)]),

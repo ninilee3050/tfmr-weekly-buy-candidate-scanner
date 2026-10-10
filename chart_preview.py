@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from market_context import SP500_NAME, SP500_TICKER, load_sp500_context
+from scanner import OUTCOME_SOLD
 from ui_theme import configure_ui_fonts, normalize_theme, theme_palette
 
 
@@ -126,53 +127,37 @@ BENCHMARK_NAME = SP500_NAME
 BENCHMARK_SIGNAL_OPACITY = 0.78
 BENCHMARK_SIGNAL_WIDTH = 2.2
 
+# Buy rounds run from green to deep orange; the sell line is violet so it is
+# not mistaken for a candle colour.
 SIGNAL_STYLES = (
-    ("1차", "FirstSignalDate", "#16a34a"),
-    ("2차", "SecondSignalDate", "#f59e0b"),
-    ("3차", "ThirdDecisionDate", "#dc2626"),
+    ("1차", "BuyDate1", "#16a34a"),
+    ("2차", "BuyDate2", "#65a30d"),
+    ("3차", "BuyDate3", "#ca8a04"),
+    ("4차", "BuyDate4", "#ea580c"),
+    ("5차", "BuyDate5", "#c2410c"),
+    ("매도", "SellDate", "#9333ea"),
 )
-
-BUY_MARKER_HORIZONS = (
-    ("3M", 13, "Return3M", "Return3MStatus"),
-    ("6M", 26, "Return6M", "Return6MStatus"),
-    ("9M", 39, "Return9M", "Return9MStatus"),
-    ("12M", 52, "Return12M", "Return12MStatus"),
-)
-
-RETURN_HORIZONS = (
-    ("3M", "Return3M", "Return3MStatus"),
-    ("6M", "Return6M", "Return6MStatus"),
-    ("9M", "Return9M", "Return9MStatus"),
-    ("12M", "Return12M", "Return12MStatus"),
-)
+AVERAGE_PRICE_COLOR = SIGNAL_STYLES[0][2]
+# A trade case lasts a few weeks, so half a year on each side keeps it readable.
+CASE_VIEW_MARGIN = pd.DateOffset(weeks=26)
 
 
-def format_cycle_return(value, status) -> str:
-    """Format one stored forward return without recalculating it."""
-    if value is not None and not pd.isna(value):
-        try:
-            return f"{float(value):+.2f}%"
-        except (TypeError, ValueError):
-            return str(value)
-    if status is not None and not pd.isna(status):
-        status_text = str(status).strip()
-        if status_text:
-            return status_text
-    return "-"
-
-
-def cycle_return_summary(cycle: pd.Series | None) -> str:
-    """Build the compact 3/6/9/12-month result shown in the chart header."""
+def case_result_summary(cycle: pd.Series | None) -> str:
+    """Compact result of a trade case for the chart header."""
     if cycle is None:
         return ""
-    statuses = {str(cycle.get(status_column, "")) for _, _, status_column in RETURN_HORIZONS}
-    if statuses == {"해당 없음"}:
-        # Failed or discarded cycles have no returns to show.
-        return ""
-    return " · ".join(
-        f"{label} {format_cycle_return(cycle.get(value_column), cycle.get(status_column))}"
-        for label, value_column, status_column in RETURN_HORIZONS
-    )
+    parts = []
+    average = cycle.get("AveragePrice")
+    if average is not None and not pd.isna(average):
+        parts.append(f"평단 {float(average):,.2f}")
+    value = cycle.get("ReturnPct")
+    if value is not None and not pd.isna(value):
+        label = "수익률" if cycle.get("Outcome") == OUTCOME_SOLD else "평가손익"
+        parts.append(f"{label} {float(value):+.2f}%")
+    weeks = cycle.get("HoldingWeeks")
+    if weeks is not None and not pd.isna(weeks):
+        parts.append(f"{int(weeks)}주 보유")
+    return " · ".join(parts)
 
 
 @dataclass(frozen=True)
@@ -191,19 +176,15 @@ def cycle_view_dates(
         raise ValueError("차트 데이터가 비어 있습니다.")
 
     latest = dates[-1]
-    if cycle is None or pd.isna(cycle.get("FirstSignalDate")):
+    if cycle is None or pd.isna(cycle.get("FirstBuyDate")):
         start = max(dates[0], latest - pd.DateOffset(years=3))
         return dates[dates.searchsorted(start, side="left")], latest
 
-    first = _timestamp(cycle.get("FirstSignalDate"))
-    second = _timestamp(cycle.get("SecondSignalDate"))
-    third = _timestamp(cycle.get("ThirdDecisionDate"))
-    anchor = third if third is not None else second if second is not None else first
-    start = first - pd.DateOffset(years=1)
-    end = anchor + pd.DateOffset(years=1)
-
-    if "대기" in str(cycle.get("Outcome", "")):
-        end = max(end, latest)
+    first = _timestamp(cycle.get("FirstBuyDate"))
+    sold = _timestamp(cycle.get("SellDate"))
+    start = first - CASE_VIEW_MARGIN
+    # A case still held is shown up to the latest week.
+    end = sold + CASE_VIEW_MARGIN if sold is not None else latest
     start = max(dates[0], start)
     end = min(latest, end)
     start_position = min(len(dates) - 1, int(dates.searchsorted(start, side="left")))
@@ -260,7 +241,7 @@ class ChartPreviewWindow(tk.Toplevel):
         self.theme_mode = normalize_theme(theme_mode)
         self.palette = theme_palette(self.theme_mode)
         self.configure(background=self.palette["window"])
-        self.title("MMRM 시나리오 차트 미리보기")
+        self.title("TFMR 매매 차트 미리보기")
         width = min(1600, self.winfo_screenwidth() - 40)
         height = min(920, self.winfo_screenheight() - 80)
         self.geometry(f"{width}x{height}")
@@ -268,11 +249,11 @@ class ChartPreviewWindow(tk.Toplevel):
         self.protocol("WM_DELETE_WINDOW", self._close)
 
         self.status_var = tk.StringVar(value="차트 데이터를 준비해 주세요.")
-        self.chart_strength_var = tk.StringVar(value="차트 강도: 산정 대기")
+        self.summary_var = tk.StringVar(value="")
         self.hover_var = tk.StringVar(
             value=(
                 "방향키 ←·→: 이전·다음 기록  |  휠: 확대·축소  |  "
-                "드래그: 좌우 이동  |  더블클릭: 선택 사이클 전체 보기"
+                "드래그: 좌우 이동  |  더블클릭: 선택 케이스 전체 보기"
             )
         )
         self.header_frame = ttk.Frame(self)
@@ -310,7 +291,7 @@ class ChartPreviewWindow(tk.Toplevel):
         self._position_header_controls()
         ttk.Label(
             self,
-            textvariable=self.chart_strength_var,
+            textvariable=self.summary_var,
             font=(self.ui_font_family, 9, "bold"),
             padding=(10, 0, 10, 2),
         ).pack(fill="x")
@@ -586,7 +567,6 @@ class ChartPreviewWindow(tk.Toplevel):
         rank_text: str = "",
         navigation_index: int | None = None,
         navigation_total: int = 0,
-        chart_strength_summary: str = "",
         sp500_summary: str = "",
         sp500_data: pd.DataFrame | None = None,
         sp500_warning: str = "",
@@ -609,23 +589,24 @@ class ChartPreviewWindow(tk.Toplevel):
         self.initial_view = (self.view_start, self.view_end)
         self._drag_origin = None
 
-        first = _date_text(cycle.get("FirstSignalDate")) if cycle is not None else "-"
-        second = _date_text(cycle.get("SecondSignalDate")) if cycle is not None else "-"
-        third = _date_text(cycle.get("ThirdDecisionDate")) if cycle is not None else "-"
-        outcome = str(cycle.get("Outcome", "전체 차트")) if cycle is not None else "최근 3년"
-        returns = cycle_return_summary(cycle)
         name = f" · {company}" if company and company.upper() != self.ticker else ""
         if rank_text:
             name += f" · {rank_text}"
-        return_suffix = f"  |  {returns}" if returns else ""
-        self.status_var.set(
-            f"{self.ticker}{name}  |  1차 {first}  ·  2차 {second}  ·  "
-            f"3차 {third}  |  {outcome}{return_suffix}"
+        if cycle is None:
+            case_text = "최근 3년"
+        else:
+            sold = _date_text(cycle.get("SellDate"))
+            case_text = (
+                f"1차 매수 {_date_text(cycle.get('FirstBuyDate'))}  ·  "
+                f"{int(cycle.get('BuyRounds', 1))}차까지 매수  ·  "
+                + (f"매도 {sold}" if sold != "-" else str(cycle.get("Outcome", "")))
+            )
+        self.status_var.set(f"{self.ticker}{name}  |  {case_text}")
+        self.summary_var.set(
+            "  |  ".join(
+                part for part in (case_result_summary(cycle), sp500_summary) if part
+            )
         )
-        summary_parts = [chart_strength_summary or "차트 강도: 해당 없음"]
-        if sp500_summary:
-            summary_parts.append(sp500_summary)
-        self.chart_strength_var.set("  |  ".join(summary_parts))
         if sp500_data is not None and not sp500_data.empty:
             benchmark = sp500_data.loc[:, CHART_COLUMNS].copy()
             benchmark.index = _normalized_index(pd.DatetimeIndex(benchmark.index))
@@ -641,7 +622,7 @@ class ChartPreviewWindow(tk.Toplevel):
             self.benchmark_data = pd.DataFrame()
             self.comparison_status_var.set("S&P 500 데이터를 준비해 주세요.")
         self._set_navigation_state(navigation_index, navigation_total)
-        self.title(f"{self.ticker} · MMRM 시나리오 차트 미리보기")
+        self.title(f"{self.ticker} · TFMR 매매 차트 미리보기")
         self.deiconify()
         self.lift()
         self.focus_force()
@@ -1109,18 +1090,25 @@ class ChartPreviewWindow(tk.Toplevel):
             )
 
     def _draw_buy_markers(self, panel: Panel, visible: pd.DataFrame) -> None:
-        """Mark the 3rd-signal buy price and the 3/6/9/12-month outcomes."""
+        """Mark the average buy price and, for a sold case, the sell result."""
         cycle = self.cycle
-        if cycle is None or visible.empty or cycle.get("Outcome") != "매수 성공":
+        if cycle is None or visible.empty:
             return
-        buy_date = _timestamp(cycle.get("ThirdDecisionDate"))
-        if buy_date is None:
+        first_date = _timestamp(cycle.get("FirstBuyDate"))
+        average = cycle.get("AveragePrice")
+        if first_date is None or average is None or pd.isna(average):
             return
-        position = int(self.data.index.searchsorted(buy_date, side="left"))
-        if position >= len(self.data) or self.data.index[position] != buy_date:
+        position = int(self.data.index.searchsorted(first_date, side="left"))
+        if position >= len(self.data) or position > self.view_end:
             return
-        if position > self.view_end:
-            return
+        sell_date = _timestamp(cycle.get("SellDate"))
+        sell_position = (
+            int(self.data.index.searchsorted(sell_date, side="left"))
+            if sell_date is not None
+            else None
+        )
+        if sell_position is not None and sell_position >= len(self.data):
+            sell_position = None
 
         low, high = _price_range(visible)
         left, right = self._plot_edges()
@@ -1134,53 +1122,60 @@ class ChartPreviewWindow(tk.Toplevel):
 
         text_color = self.palette["text"]
         background = self.palette["chart_panel"]
-        buy_close = float(self.data["Close"].iloc[position])
-        line_color = readable_text_color(SIGNAL_STYLES[2][2], background, text_color)
-        if low <= buy_close <= high:
+        average = float(average)
+        line_color = readable_text_color(AVERAGE_PRICE_COLOR, background, text_color)
+        end_position = min(
+            self.view_end,
+            sell_position if sell_position is not None else self.view_end,
+        )
+        if low <= average <= high and end_position >= self.view_start:
             start_x = x_at(position) if position >= self.view_start else left
-            buy_y = y_at(buy_close)
+            end_x = x_at(end_position) if sell_position is not None else right
+            average_y = y_at(average)
             self.canvas.create_line(
                 start_x,
-                buy_y,
-                right,
-                buy_y,
+                average_y,
+                end_x,
+                average_y,
                 fill=line_color,
                 dash=(5, 3),
                 width=1,
                 tags="buy_marker",
             )
+            # Left of the first buy, clear of the sell marker and its label.
             self._create_label_with_background(
-                right - 4,
-                buy_y - 3,
-                text=f"매수 {_number(buy_close)}",
-                anchor="se",
+                start_x - 6,
+                average_y,
+                text=f"평단 {_number(average)}",
+                anchor="e",
                 fill=line_color,
             )
 
-        for label, weeks, value_column, status_column in BUY_MARKER_HORIZONS:
-            target = position + weeks
-            if not self.view_start <= target <= self.view_end or target >= len(self.data):
-                continue
-            value = cycle.get(value_column)
-            if cycle.get(status_column) != "확정" or value is None or pd.isna(value):
-                continue
-            x = x_at(target)
-            y = y_at(float(self.data["Close"].iloc[target]))
-            color = readable_text_color(
-                CANDLE_UP_COLOR if float(value) >= 0 else CANDLE_DOWN_COLOR,
-                background,
-                text_color,
-            )
-            self.canvas.create_oval(
-                x - 4, y - 4, x + 4, y + 4, outline=color, width=2, tags="buy_marker"
-            )
-            self._create_label_with_background(
-                x,
-                max(panel.top + 14, y - 7),
-                text=f"{label} {float(value):+.1f}%",
-                anchor="s",
-                fill=color,
-            )
+        value = cycle.get("ReturnPct")
+        if (
+            sell_position is None
+            or not self.view_start <= sell_position <= self.view_end
+            or value is None
+            or pd.isna(value)
+        ):
+            return
+        x = x_at(sell_position)
+        y = y_at(float(self.data["Close"].iloc[sell_position]))
+        color = readable_text_color(
+            CANDLE_UP_COLOR if float(value) >= 0 else CANDLE_DOWN_COLOR,
+            background,
+            text_color,
+        )
+        self.canvas.create_oval(
+            x - 4, y - 4, x + 4, y + 4, outline=color, width=2, tags="buy_marker"
+        )
+        self._create_label_with_background(
+            x,
+            max(panel.top + 14, y - 7),
+            text=f"매도 {float(value):+.1f}%",
+            anchor="s",
+            fill=color,
+        )
 
     def _create_label_with_background(
         self,

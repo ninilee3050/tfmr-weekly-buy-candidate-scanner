@@ -11,6 +11,9 @@ OUTCOME_HOLDING = "보유 중"
 OUTCOME_SOLD = "매도 완료"
 SELL_EVENT = "매도"
 
+# Date of each buy round of a case, e.g. "BuyDate3" for the 3rd buy.
+BUY_DATE_COLUMNS = [f"BuyDate{buy_round}" for buy_round in range(1, MAX_BUY_ROUNDS + 1)]
+
 REQUIRED_COLUMNS = ("Open", "Close", "MA_5", "MA_20", "MA_50", "MA_150", "MA_200")
 
 TRADE_CASE_COLUMNS = [
@@ -29,6 +32,7 @@ TRADE_CASE_COLUMNS = [
     "LastEvent",
     "LastEventDate",
     "Provisional",
+    *BUY_DATE_COLUMNS,
 ]
 TRADE_BUY_COLUMNS = [
     "FirstBuyDate",
@@ -261,6 +265,7 @@ def _record_buy(
     case["Cost"] += price * buy_round
     case["LastBuyDate"] = date
     case["LastBuyPrice"] = price
+    case[f"BuyDate{buy_round}"] = date
     case["LastEvent"] = buy_round_label(buy_round)
     case["LastEventDate"] = date
     case["Provisional"] = provisional
@@ -279,7 +284,7 @@ def _record_buy(
 
 
 def _case_row(case: dict[str, object]) -> dict[str, object]:
-    row = {column: case.get(column) for column in TRADE_CASE_COLUMNS}
+    row = {column: case.get(column, pd.NaT) for column in TRADE_CASE_COLUMNS}
     row["AveragePrice"] = case["Cost"] / case["Quantity"]
     return row
 

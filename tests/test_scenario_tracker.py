@@ -47,6 +47,7 @@ def summarize(
         scan_date,
         previous_active=previous_active,
         last_scan_date=last_scan_date,
+        now=now,
     )
 
 
@@ -113,8 +114,17 @@ def test_first_buy_this_week_is_reported_and_saved_as_active() -> None:
     assert active["평단가"] == 100
     assert active["다음추가매수가"] == pytest.approx(97.0)
     assert active["마지막확인일"] == BASE_WEEK + FRIDAY
-    assert active["데이터상태"] == "현재 주봉 포함"
+    assert active["데이터상태"] == "확정 주봉"
     assert closed == []
+
+
+def test_data_state_says_whether_the_latest_week_is_still_open() -> None:
+    data = _case_frame([(105, 100)])
+    wednesday = BASE_WEEK + pd.Timedelta(days=2, hours=12)
+
+    _events, active, _closed = summarize(data, wednesday.normalize(), now=wednesday)
+
+    assert active["데이터상태"] == "현재 주봉 포함"
 
 
 def test_tracked_case_reports_missed_add_on_buy_and_this_weeks_sell() -> None:

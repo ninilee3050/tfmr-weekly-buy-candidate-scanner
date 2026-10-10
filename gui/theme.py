@@ -207,10 +207,6 @@ class ThemeMixin:
 
         if hasattr(self, "theme_button"):
             self.theme_button.configure(text=self._theme_button_text())
-        tooltip = getattr(self, "chart_strength_tooltip", None)
-        if tooltip is not None:
-            tooltip.hide()
-            self._chart_strength_hover_item = None
         for tree_name in ("scan_tree", "active_tree"):
             tree = getattr(self, tree_name, None)
             if tree is not None:

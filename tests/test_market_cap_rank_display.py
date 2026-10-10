@@ -35,7 +35,7 @@ def test_scanner_tables_start_with_the_market_cap_rank() -> None:
         {
             "순위": [8, 9000, 9999],
             "티커": ["META", "BTC-USD", "OLD"],
-            "현재상태": ["2차 신호 대기"] * 3,
+            "현재상태": ["보유 중"] * 3,
         }
     )
 

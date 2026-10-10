@@ -13,121 +13,6 @@ from gui.config import MIN_WINDOW_SIZE, TABLE_FLEX_WEIGHTS
 from gui.formatting import _format_value
 
 
-class ChartStrengthTooltip:
-    """Small themed popup for one chart-strength table cell."""
-
-    def __init__(self, owner: tk.Misc, font_family: str) -> None:
-        self.owner = owner
-        self.font_family = font_family
-        self.window: tk.Toplevel | None = None
-
-    def show(
-        self,
-        x: int,
-        y: int,
-        detail: dict[str, object],
-        palette: dict[str, str],
-    ) -> None:
-        self.hide()
-        window = tk.Toplevel(self.owner)
-        window.wm_overrideredirect(True)
-        window.configure(background=palette["border"])
-        self.window = window
-
-        body = tk.Frame(window, background=palette["field"], padx=10, pady=9)
-        body.pack(padx=1, pady=1)
-        title = (
-            f"차트 강도 {detail.get('score_text', '계산 불가')}"
-            f" · {detail.get('grade', '확인 필요')}"
-        )
-        tk.Label(
-            body,
-            text=title,
-            background=palette["field"],
-            foreground=palette["text"],
-            font=(self.font_family, 10, "bold"),
-        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 7))
-
-        components = detail.get("components", [])
-        next_row = 1
-        if components:
-            for column, text in enumerate(("평가항목", "실제 값", "상대점수")):
-                tk.Label(
-                    body,
-                    text=text,
-                    background=palette["panel"],
-                    foreground=palette["muted"],
-                    font=(self.font_family, 9, "bold"),
-                    padx=5,
-                    pady=3,
-                ).grid(row=next_row, column=column, sticky="nsew")
-            next_row += 1
-            for component in components:
-                values = (
-                    str(component.get("label", "")),
-                    str(component.get("value_text", "")),
-                    str(component.get("score_text", "")),
-                )
-                for column, text in enumerate(values):
-                    tk.Label(
-                        body,
-                        text=text,
-                        background=palette["field"],
-                        foreground=palette["text"],
-                        font=(self.font_family, 9),
-                        padx=5,
-                        pady=2,
-                        anchor="e" if column else "w",
-                    ).grid(row=next_row, column=column, sticky="nsew")
-                next_row += 1
-
-        reasons = detail.get("reasons", [])
-        reason_text = "판단 이유\n" + "\n".join(f"• {reason}" for reason in reasons)
-        tk.Label(
-            body,
-            text=reason_text,
-            background=palette["field"],
-            foreground=palette["text"],
-            font=(self.font_family, 9),
-            justify="left",
-            anchor="w",
-            wraplength=470,
-        ).grid(row=next_row, column=0, columnspan=3, sticky="ew", pady=(8, 4))
-        next_row += 1
-
-        reference_count = int(detail.get("reference_count", 0) or 0)
-        footer = (
-            f"과거 확정 사례 {reference_count:,}건 기준\n"
-            f"{detail.get('note', '')}"
-        )
-        tk.Label(
-            body,
-            text=footer,
-            background=palette["field"],
-            foreground=palette["muted"],
-            font=(self.font_family, 8),
-            justify="left",
-            anchor="w",
-        ).grid(row=next_row, column=0, columnspan=3, sticky="ew", pady=(3, 0))
-
-        window.update_idletasks()
-        width = window.winfo_reqwidth()
-        height = window.winfo_reqheight()
-        screen_width = window.winfo_screenwidth()
-        screen_height = window.winfo_screenheight()
-        x = max(4, min(x, screen_width - width - 8))
-        y = max(4, min(y, screen_height - height - 8))
-        window.wm_geometry(f"+{x}+{y}")
-
-    def hide(self) -> None:
-        if self.window is not None:
-            try:
-                self.window.destroy()
-            except tk.TclError:
-                pass
-        self.window = None
-
-
 def populate_table(
     tree: ttk.Treeview,
     data: pd.DataFrame,
@@ -152,7 +37,7 @@ def populate_table(
                 measured_width,
                 default_font.measure(values[column_index]) + 24,
             )
-        maximum_width = 700 if column in {"오류", "ConditionSummary"} else 360
+        maximum_width = 700 if column == "오류" else 360
         if column_bounds and column in column_bounds:
             minimum_width, maximum_width = column_bounds[column]
             display_width = min(
@@ -174,12 +59,12 @@ def populate_table(
             ),
         )
         tree.column(column, width=display_width, minwidth=60, stretch=False)
-    tree._mmrm_sort_state = None
+    tree._sort_state = None
 
     for values in formatted_rows:
         tree.insert("", "end", values=values)
 
-    tree._mmrm_preferred_widths = {
+    tree._preferred_widths = {
         column: int(tree.column(column, "width"))
         for column in columns
     }
@@ -193,7 +78,7 @@ SORT_UNIT_MULTIPLIERS = {"K": 1e3, "M": 1e6, "B": 1e9, "T": 1e12}
 _SORT_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}")
 # A number, an optional unit, and optionally a "(3/4)" style detail; nothing else.
 _SORT_NUMBER_PATTERN = re.compile(
-    r"^([+-]?[\d,]*\.?\d+)\s*([KMBT])?(?:%p|%|점|건|개월|개|위)?(?:\s*\(.*\))?$"
+    r"^([+-]?[\d,]*\.?\d+)\s*([KMBT])?(?:%p|%|점|건|개월|개|위|차|주)?(?:\s*\(.*\))?$"
 )
 
 
@@ -232,7 +117,7 @@ def sort_table_by_column(tree: ttk.Treeview, column: str) -> None:
     texts = [tree.set(item, column) for item in items]
     keys = [key for key in map(table_sort_key, texts) if key is not None]
     numeric = bool(keys) and sum(kind == 0 for kind, _value in keys) * 2 >= len(keys)
-    previous = getattr(tree, "_mmrm_sort_state", None)
+    previous = getattr(tree, "_sort_state", None)
     if previous is not None and previous[0] == column:
         descending = not previous[1]
     else:
@@ -241,7 +126,7 @@ def sort_table_by_column(tree: ttk.Treeview, column: str) -> None:
         descending = numeric and column not in RANK_COLUMNS
     for position, index in enumerate(sorted_row_order(texts, descending)):
         tree.move(items[index], "", position)
-    tree._mmrm_sort_state = (column, descending)
+    tree._sort_state = (column, descending)
     for name in tree["columns"]:
         marker = (" ▼" if descending else " ▲") if name == column else ""
         tree.heading(name, text=f"{name}{marker}")
@@ -249,7 +134,7 @@ def sort_table_by_column(tree: ttk.Treeview, column: str) -> None:
 
 def _fit_table_columns_to_viewport(tree: ttk.Treeview) -> None:
     """Fill spare table width without compressing readable content widths."""
-    preferred = getattr(tree, "_mmrm_preferred_widths", None)
+    preferred = getattr(tree, "_preferred_widths", None)
     if not preferred:
         return
     try:
@@ -315,14 +200,9 @@ def _table_required_width(
 def _column_width(column: str) -> int:
     if column in {
         "Date",
-        "매수포인트날짜",
-        "1차신호일",
-        "2차신호일",
-        "3차판정일",
-        "종료일",
-        "observation_start_date",
-        "주봉시작일",
-        "스캔일",
+        "1차매수일",
+        "최근매수일",
+        "매도일",
         "신호일",
         "마지막확인일",
         "데이터기준일",
@@ -332,55 +212,24 @@ def _column_width(column: str) -> int:
         return 220
     if column == "오류":
         return 420
-    if column in {"섹터", "산업", "분야"}:
-        return 175
-    if column == "ConditionSummary":
-        return 600
-    if column in {"macd_area", "macd_flow"}:
-        return 140
     if column in {"순위", "티커"}:
         return 70
-    if column == "현재 시총순위":
+    if column in {"현재 시총순위", "시가총액"}:
         return 95
-    if column == "시가총액":
-        return 95
-    if column in {
-        "Close",
-        "MA_20",
-        "MA_50",
-        "MA_150",
-        "MA_200",
-        "MACD",
-        "Signal",
-        "RSI",
-        "MFI",
-    }:
-        return 75
-    if column == "Momentum":
-        return 85
     if column == "결과":
-        return 210
-    if column in {"승률", "매수 도달률"} or column.endswith("개월 승률"):
-        return 145
-    if column in {
-        "종합점수",
-        "분석 표본",
-        "매수 건수",
-        "종목 수",
-        "종료 사이클",
-        "차트 강도",
-    }:
-        return 95
-    if column == "검토등급":
+        return 110
+    if column in {"매수차수", "보유주수"}:
+        return 80
+    if column in {"가격", "평단가", "매도가", "현재가", "최근매수가"}:
         return 90
-    if column == "MA20_50이격률":
-        return 120
+    if column == "다음추가매수가":
+        return 115
     if column in {"단계", "신호구분"}:
         return 95
     if column in {"현재상태", "데이터상태"}:
         return 125
     if column.endswith("수익률") or column.endswith("손익률"):
-        return 125
+        return 100
     return 110
 
 

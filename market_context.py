@@ -84,17 +84,14 @@ def annotate_sp500_status(
     *,
     reference_date_columns: tuple[str, ...] = (),
     use_latest: bool = False,
-    pending_uses_latest: bool = False,
 ) -> pd.DataFrame:
-    """Add a market-regime label without changing any signal or strength score."""
+    """Add a market-regime label; rows without a reference date use the latest week."""
     annotated = data.copy()
     annotated[SP500_STATUS_COLUMN] = "확인불가"
 
     for index, row in annotated.iterrows():
-        result = str(row.get("결과", row.get("현재상태", "")))
-        is_pending = "대기" in result
         reference_date: pd.Timestamp | None = None
-        if not use_latest and not (pending_uses_latest and is_pending):
+        if not use_latest:
             for column in reference_date_columns:
                 candidate = pd.to_datetime(row.get(column), errors="coerce")
                 if not pd.isna(candidate):
@@ -106,19 +103,3 @@ def annotate_sp500_status(
         ).display
 
     return annotated
-
-
-def sp500_summary_for_cycle(
-    benchmark: pd.DataFrame,
-    cycle: pd.Series | None,
-) -> str:
-    if cycle is None:
-        return sp500_status_at(benchmark).summary
-    outcome = str(cycle.get("Outcome", ""))
-    if "대기" in outcome:
-        return sp500_status_at(benchmark).summary
-    for column in ("ThirdDecisionDate", "SecondSignalDate", "FirstSignalDate"):
-        date = pd.to_datetime(cycle.get(column), errors="coerce")
-        if not pd.isna(date):
-            return sp500_status_at(benchmark, pd.Timestamp(date)).summary
-    return sp500_status_at(benchmark).summary

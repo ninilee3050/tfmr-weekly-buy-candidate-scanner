@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 from csv_io import read_csv_flexible
+from data_provider import is_weekend_traded, weekly_bar_in_progress
 from market_cap_provider import MarketCapCompany
 from scanner import OUTCOME_HOLDING, OUTCOME_SOLD, SELL_EVENT, buy_round_label
 
@@ -142,12 +143,15 @@ def summarize_ticker_cases(
     scan_date: pd.Timestamp | str,
     previous_active: pd.Series | None = None,
     last_scan_date: pd.Timestamp | str | None = None,
+    now: pd.Timestamp | None = None,
 ) -> tuple[list[dict[str, object]], dict[str, object] | None, list[dict[str, object]]]:
     """Summarize one ticker's trade cases into new events, an active row and sells.
 
     ``last_scan_date`` is the most recent scan date across the whole previous
     active state (see ``latest_scan_date``).  It lets a ticker that was not
-    being tracked still report a case that opened after that scan.
+    being tracked still report a case that opened after that scan.  ``now``
+    decides whether the latest weekly bar is still open; it defaults to the
+    current time.
     """
     if full_table.empty:
         return [], None, []
@@ -232,7 +236,13 @@ def summarize_ticker_cases(
             "마지막확인일": pd.Timestamp(scan_date).normalize(),
             "데이터기준일": data_date,
             "데이터상태": (
-                "현재 주봉 포함" if data_date == week_start else "확정 주봉"
+                "현재 주봉 포함"
+                if weekly_bar_in_progress(
+                    data_date,
+                    now=now,
+                    weekend_traded=is_weekend_traded(company.ticker),
+                )
+                else "확정 주봉"
             ),
         }
 

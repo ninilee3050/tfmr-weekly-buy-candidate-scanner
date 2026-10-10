@@ -7,8 +7,6 @@ from tkinter import messagebox, ttk
 
 import pandas as pd
 
-from chart_strength import ChartStrengthReferenceError, load_chart_strength_reference
-from benchmark_analytics import add_benchmark_returns
 from csv_io import describe_save_error
 from data_provider import (
     DataLoadError,
@@ -19,13 +17,11 @@ from data_provider import (
 from indicators import calculate_indicators
 from market_cap_provider import MarketCapCompany, load_saved_ranking
 from market_context import load_sp500_context
-from performance_analytics import build_ticker_performance, format_reach_rate
-from scanner import scan_signal_cycles
-from sector_provider import load_sector_classifications
+from scanner import scan_trade_cases
 from watchlist import WATCHLIST_RANK_START
-from gui.config import SIGNAL_HISTORY_COLUMN_BOUNDS
-from gui.scan_results import annotate_signal_history_display
-from gui.storage import save_signal_outputs
+from gui.config import TRADE_HISTORY_COLUMN_BOUNDS
+from gui.scan_results import trade_history_display
+from gui.storage import save_trade_case_outputs
 from gui.tables import populate_table
 
 
@@ -39,7 +35,7 @@ class SearchMixin:
         ticker = self.top100_tree.set(selected[0], "ticker")
         if not ticker:
             return
-        self.pending_chart_first_signal_date = None
+        self.pending_chart_first_buy_date = None
         self.ticker_var.set(ticker)
         self.run_search()
 
@@ -50,7 +46,7 @@ class SearchMixin:
         ticker = tree.set(selected[0], "티커")
         if not ticker:
             return
-        self.pending_chart_first_signal_date = None
+        self.pending_chart_first_buy_date = None
         self.ticker_var.set(ticker)
         self.run_search()
 
@@ -60,16 +56,16 @@ class SearchMixin:
             return
         item = selected[0]
         ticker = self.closed_scenario_tree.set(item, "티커")
-        first_signal_date = self.closed_scenario_tree.set(item, "1차신호일")
-        if not ticker or not first_signal_date:
+        first_buy_date = self.closed_scenario_tree.set(item, "1차매수일")
+        if not ticker or not first_buy_date:
             return
-        self.pending_chart_first_signal_date = pd.Timestamp(first_signal_date)
+        self.pending_chart_first_buy_date = pd.Timestamp(first_buy_date)
         self.ticker_var.set(ticker)
         if self.current_ticker == ticker.upper() and not self.current_chart_data.empty:
             if self._chart_is_open():
                 self._show_chart(
-                    self._cycle_for_first_signal_date(
-                        self.pending_chart_first_signal_date
+                    self._case_for_first_buy_date(
+                        self.pending_chart_first_buy_date
                     )
                 )
             return
@@ -81,19 +77,19 @@ class SearchMixin:
             return
         self.closed_scenario_tree.selection_set(item)
         ticker = self.closed_scenario_tree.set(item, "티커")
-        first_signal_date = self.closed_scenario_tree.set(item, "1차신호일")
-        if not ticker or not first_signal_date:
+        first_buy_date = self.closed_scenario_tree.set(item, "1차매수일")
+        if not ticker or not first_buy_date:
             return
 
-        self.pending_chart_first_signal_date = pd.Timestamp(first_signal_date)
+        self.pending_chart_first_buy_date = pd.Timestamp(first_buy_date)
         self.open_chart_after_search = True
         if self.current_ticker == ticker.upper() and not self.current_chart_data.empty:
-            cycle = self._cycle_for_first_signal_date(
-                self.pending_chart_first_signal_date
+            case = self._case_for_first_buy_date(
+                self.pending_chart_first_buy_date
             )
-            self._show_chart(cycle)
+            self._show_chart(case)
             self.open_chart_after_search = False
-            self.pending_chart_first_signal_date = None
+            self.pending_chart_first_buy_date = None
 
     def _on_ticker_double_click(
         self,
@@ -109,13 +105,13 @@ class SearchMixin:
         if not ticker:
             return
 
-        self.pending_chart_first_signal_date = None
+        self.pending_chart_first_buy_date = None
         self.open_chart_after_search = True
         if (
             self.current_ticker == ticker.upper()
             and not self.current_chart_data.empty
         ):
-            self._show_chart(self._latest_cycle())
+            self._show_chart(self._latest_case())
             self.open_chart_after_search = False
             return
 
@@ -137,9 +133,8 @@ class SearchMixin:
 
         self.search_button.configure(state="disabled")
         self.status_var.set(f"{ticker} 주봉 데이터를 불러오는 중입니다...")
-        self.ticker_profile_var.set("분야 정보를 확인하는 중입니다...")
-        self.ticker_cycle_summary_var.set("시나리오 성과를 계산하는 중입니다...")
-        self._set_horizon_cards(None)
+        self.ticker_profile_var.set("매매 기록을 계산하는 중입니다...")
+        self._set_summary_cards(None)
 
         company = self._company_for_ticker(ticker)
         worker = threading.Thread(
@@ -170,22 +165,18 @@ class SearchMixin:
                 force_refresh=True,
             )
             calculated = calculate_indicators(raw_data)
-            signal_cycles, full_table = scan_signal_cycles(
+            cases, buys, full_table = scan_trade_cases(
                 calculated,
                 weekend_traded=is_weekend_traded(ticker),
             )
             try:
-                signal_path, _ = save_signal_outputs(ticker, signal_cycles, full_table)
-                save_message = f"저장: {signal_path}"
+                case_path, _buy_path, _full_path = save_trade_case_outputs(
+                    ticker, cases, buys, full_table
+                )
+                save_message = f"저장: {case_path}"
             except OSError as exc:
                 # Show the result anyway when a CSV is open in Excel.
                 save_message = f"저장 실패: {describe_save_error(exc)}"
-            reference_error = None
-            try:
-                chart_strength_reference = load_chart_strength_reference()
-            except ChartStrengthReferenceError as exc:
-                chart_strength_reference = None
-                reference_error = str(exc)
             try:
                 sp500_data, sp500_load = load_sp500_context(
                     expected_latest_date=full_table.index[-1],
@@ -194,32 +185,7 @@ class SearchMixin:
             except Exception as exc:
                 sp500_data = pd.DataFrame()
                 sp500_warning = f"S&P500 상태 확인 실패: {exc}"
-            history_display, chart_strength_details = annotate_signal_history_display(
-                ticker,
-                signal_cycles,
-                full_table,
-                chart_strength_reference,
-                reference_error=reference_error,
-                sp500_data=sp500_data,
-            )
-            classifications = load_sector_classifications([ticker])
-            cycles_by_ticker = {
-                ticker.upper(): add_benchmark_returns(
-                    signal_cycles,
-                    full_table,
-                    sp500_data,
-                    weekend_traded=is_weekend_traded(ticker),
-                )
-            }
-            performance_by_horizon = {
-                horizon: build_ticker_performance(
-                    [company],
-                    cycles_by_ticker,
-                    classifications,
-                    horizon,
-                ).iloc[0]
-                for horizon in (3, 6, 9, 12)
-            }
+            history_display = trade_history_display(cases, sp500_data)
         except Exception as exc:
             self.after(0, self._show_error, ticker, exc)
             return
@@ -228,14 +194,11 @@ class SearchMixin:
             0,
             self._show_result,
             ticker,
-            signal_cycles,
+            cases,
             full_table,
             save_message,
             company,
-            classifications,
-            performance_by_horizon,
             history_display,
-            chart_strength_details,
             sp500_data,
             sp500_warning,
         )
@@ -243,14 +206,11 @@ class SearchMixin:
     def _show_result(
         self,
         ticker: str,
-        signal_cycles: pd.DataFrame,
+        cases: pd.DataFrame,
         full_table: pd.DataFrame,
         save_message: str,
         company: MarketCapCompany,
-        classifications: pd.DataFrame,
-        performance_by_horizon: dict[int, pd.Series],
         history_display: pd.DataFrame,
-        chart_strength_details: dict[tuple[str, str], dict[str, object]],
         sp500_data: pd.DataFrame,
         sp500_warning: str,
     ) -> None:
@@ -260,59 +220,46 @@ class SearchMixin:
             f"시총 {company.rank}위" if company.rank < WATCHLIST_RANK_START else ""
         )
         self.current_chart_data = full_table.copy()
-        self.current_signal_cycles = signal_cycles.reset_index(drop=True).copy()
+        self.current_trade_cases = cases.reset_index(drop=True).copy()
         self.current_sp500_data = sp500_data.copy()
         self.current_sp500_warning = sp500_warning
-        self.chart_strength_details.update(chart_strength_details)
-        # Newest cycle first; rows map back to cycles via _history_cycle_position.
+        # Newest case first; rows map back to cases via _history_case_position.
         history_rows = history_display.iloc[::-1]
         populate_table(
             self.buy_tree,
             history_rows,
-            column_bounds=SIGNAL_HISTORY_COLUMN_BOUNDS,
+            column_bounds=TRADE_HISTORY_COLUMN_BOUNDS,
             sortable=False,
         )
         self._apply_history_tags(history_rows)
 
-        count = len(signal_cycles)
         self.status_var.set(
-            f"{ticker}: 3단계 신호 사이클 {count}개를 찾았습니다. "
-            f"{save_message}"
+            f"{ticker}: 매매 케이스 {len(cases)}개를 찾았습니다. {save_message}"
         )
-        classification = (
-            classifications.iloc[0]
-            if not classifications.empty
-            else pd.Series({"섹터": "미분류", "산업": "미분류"})
-        )
-        rank_text = f"{self.current_rank_text}  |  " if self.current_rank_text else ""
+        name = company.company if company.company.upper() != ticker.upper() else ""
         self.ticker_profile_var.set(
-            f"{ticker}  |  {rank_text}섹터: {classification.get('섹터', '미분류')}  |  "
-            f"산업: {classification.get('산업', '미분류')}"
+            "  |  ".join(
+                part for part in (ticker, name, self.current_rank_text) if part
+            )
         )
-        base = performance_by_horizon[3]
-        self.ticker_cycle_summary_var.set(
-            f"종료 사이클 {int(base['종료 사이클'])}건  |  "
-            f"3차 매수 도달 {int(base['매수 건수'])}건  |  "
-            f"매수 도달률 {format_reach_rate(base['매수 도달률'], base['매수 건수'], base['종료 사이클'])}"
-        )
-        self._set_horizon_cards(performance_by_horizon)
+        self._set_summary_cards(cases)
         self.search_button.configure(state="normal")
         if self._take_queued_search(ticker):
             # The pending chart request belongs to the queued ticker.
             self.run_search()
             return
 
-        target_cycle = self._cycle_for_first_signal_date(
-            self.pending_chart_first_signal_date
+        target_case = self._case_for_first_buy_date(
+            self.pending_chart_first_buy_date
         )
-        if target_cycle is None:
-            target_cycle = self._latest_cycle()
+        if target_case is None:
+            target_case = self._latest_case()
 
         if self._chart_is_open() or self.open_chart_after_search:
             # _show_chart also selects the matching history row.
-            self._show_chart(target_cycle)
+            self._show_chart(target_case)
         self.open_chart_after_search = False
-        self.pending_chart_first_signal_date = None
+        self.pending_chart_first_buy_date = None
 
     def _show_error(self, ticker: str, exc: Exception) -> None:
         if isinstance(exc, DataLoadError):
@@ -321,14 +268,13 @@ class SearchMixin:
             message = f"{ticker} 처리 중 오류가 발생했습니다: {exc}"
 
         self.status_var.set(message)
-        self.ticker_profile_var.set("분야: 조회 실패")
-        self.ticker_cycle_summary_var.set("성과를 계산하지 못했습니다.")
-        self._set_horizon_cards(None)
+        self.ticker_profile_var.set("매매 기록을 계산하지 못했습니다.")
+        self._set_summary_cards(None)
         self.search_button.configure(state="normal")
         queued = self._take_queued_search(ticker)
         if not queued:
             self.open_chart_after_search = False
-            self.pending_chart_first_signal_date = None
+            self.pending_chart_first_buy_date = None
         messagebox.showerror("오류", message)
         if queued:
             self.run_search()

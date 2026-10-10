@@ -11,17 +11,14 @@ from ui_theme import load_settings
 from gui.config import (
     ACTIVE_SCENARIO_DISPLAY_COLUMNS,
     CLOSED_RESULT_DISPLAY_COLUMNS,
-    CLOSED_SCENARIO_COLUMN_BOUNDS,
     CLOSED_SCENARIO_DISPLAY_COLUMNS,
-    FIELD_DISPLAY_COLUMNS,
     HISTORY_LEGEND,
-    RANKING_DISPLAY_COLUMNS,
     SCAN_EVENT_DISPLAY_COLUMNS,
     SCAN_FAILURE_COLUMNS,
-    SIGNAL_HISTORY_COLUMN_BOUNDS,
-    SIGNAL_HISTORY_DISPLAY_COLUMNS,
-    SIGNAL_VALIDATION_DISPLAY_COLUMNS,
+    STRONG_RETURN_PERCENT,
     TOP100_PANEL_WIDTH,
+    TRADE_HISTORY_COLUMN_BOUNDS,
+    TRADE_HISTORY_DISPLAY_COLUMNS,
     UI_SETTINGS_PATH,
 )
 from gui.tooltips import attach_heading_tooltips
@@ -42,16 +39,14 @@ class LayoutMixin:
     def _build_layout(self) -> None:
         left_panel_width = TOP100_PANEL_WIDTH
         history_panel_width = _table_required_width(
-            SIGNAL_HISTORY_DISPLAY_COLUMNS,
-            SIGNAL_HISTORY_COLUMN_BOUNDS,
+            TRADE_HISTORY_DISPLAY_COLUMNS,
+            TRADE_HISTORY_COLUMN_BOUNDS,
         )
         scanner_table_specs = (
             (SCAN_EVENT_DISPLAY_COLUMNS, None),
             (ACTIVE_SCENARIO_DISPLAY_COLUMNS, None),
             (CLOSED_RESULT_DISPLAY_COLUMNS, None),
-            (CLOSED_SCENARIO_DISPLAY_COLUMNS, CLOSED_SCENARIO_COLUMN_BOUNDS),
-            (FIELD_DISPLAY_COLUMNS, None),
-            (RANKING_DISPLAY_COLUMNS, None),
+            (CLOSED_SCENARIO_DISPLAY_COLUMNS, None),
             (SCAN_FAILURE_COLUMNS, None),
         )
         scanner_panel_width = max(
@@ -163,13 +158,12 @@ class LayoutMixin:
         status_label.grid(row=1, column=0, sticky="ew")
         self._wrap_to_width(status_label, center_panel, margin=30)
 
-        summary_frame = ttk.LabelFrame(center_panel, text="선택 종목 시나리오 성과", padding=5)
+        summary_frame = ttk.LabelFrame(center_panel, text="선택 종목 매매 성과", padding=5)
         summary_frame.grid(row=2, column=0, sticky="ew", pady=(0, 5))
-        for variable in (self.ticker_profile_var, self.ticker_cycle_summary_var):
-            summary_label = ttk.Label(summary_frame, textvariable=variable)
-            summary_label.pack(anchor="w")
-            self._wrap_to_width(summary_label, center_panel, margin=50)
-        self._build_horizon_cards(summary_frame)
+        summary_label = ttk.Label(summary_frame, textvariable=self.ticker_profile_var)
+        summary_label.pack(anchor="w")
+        self._wrap_to_width(summary_label, center_panel, margin=50)
+        self._build_summary_cards(summary_frame)
 
         legend_frame = ttk.Frame(center_panel, padding=(0, 2, 0, 4))
         legend_frame.grid(row=3, column=0, sticky="ew")
@@ -181,13 +175,13 @@ class LayoutMixin:
             ).pack(side="left", padx=(0, 4))
         ttk.Label(
             legend_frame,
-            text="색이 진할수록 3·6·9·12개월 결과가 한쪽으로 뚜렷합니다",
+            text=f"수익·손실이 {STRONG_RETURN_PERCENT:g}% 이상이면 진한 색입니다",
             style="LegendNote.TLabel",
         ).pack(side="left", padx=(6, 0))
 
         table_frame = ttk.LabelFrame(
             center_panel,
-            text="3단계 신호 과거 기록 (최신순 · 행 더블클릭: 차트 미리보기)",
+            text="매매 기록 (최신순 · 행 더블클릭: 차트 미리보기)",
             padding=4,
         )
         table_frame.grid(row=4, column=0, sticky="nsew")
@@ -195,8 +189,8 @@ class LayoutMixin:
         self._configure_history_tree_tags()
         populate_table(
             self.buy_tree,
-            pd.DataFrame(columns=SIGNAL_HISTORY_DISPLAY_COLUMNS),
-            column_bounds=SIGNAL_HISTORY_COLUMN_BOUNDS,
+            pd.DataFrame(columns=TRADE_HISTORY_DISPLAY_COLUMNS),
+            column_bounds=TRADE_HISTORY_COLUMN_BOUNDS,
             sortable=False,
         )
         self.buy_tree.bind("<<TreeviewSelect>>", self._on_history_select)
@@ -204,7 +198,7 @@ class LayoutMixin:
 
         self.scanner_panel = ttk.LabelFrame(
             self.main_panes,
-            text="MMRM 시나리오 추적 스캐너",
+            text="TFMR 매매 시나리오 스캐너",
             padding=6,
         )
         self.scanner_panel.configure(width=scanner_panel_width)
@@ -225,7 +219,7 @@ class LayoutMixin:
 
         self.scan_button = ttk.Button(
             scan_button_frame,
-            text="3단계 통합 스캔",
+            text="통합 스캔",
             command=self.run_top100_scan,
         )
         self.scan_button.grid(row=0, column=0, sticky="ew", padx=(0, 4))
@@ -256,18 +250,13 @@ class LayoutMixin:
         active_tab = ttk.Frame(self.scan_notebook)
         closed_tab = ttk.Frame(self.scan_notebook)
         closed_scenario_tab = ttk.Frame(self.scan_notebook)
-        field_tab = ttk.Frame(self.scan_notebook)
-        validation_tab = ttk.Frame(self.scan_notebook)
         failure_tab = ttk.Frame(self.scan_notebook)
         watchlist_tab = ttk.Frame(self.scan_notebook)
         self.scan_notebook.add(event_tab, text="이번 스캔 신호")
-        self.scan_notebook.add(active_tab, text="활성 시나리오")
-        self.scan_notebook.add(closed_tab, text="이번 스캔 종료")
-        self.scan_notebook.add(closed_scenario_tab, text="종료 시나리오")
-        self.scan_notebook.add(field_tab, text="분야별 성과")
-        self.scan_notebook.add(validation_tab, text="신호 효과 검증")
+        self.scan_notebook.add(active_tab, text="보유 중")
+        self.scan_notebook.add(closed_tab, text="이번 스캔 매도")
+        self.scan_notebook.add(closed_scenario_tab, text="매도 완료")
         self.scan_notebook.add(failure_tab, text="오류")
-        # Added last so the positions of the earlier tabs stay the same.
         self.scan_notebook.add(watchlist_tab, text="관심종목")
 
         self.scan_tree = self._create_table(event_tab)
@@ -275,74 +264,8 @@ class LayoutMixin:
         self._configure_signal_tree_tags(self.scan_tree)
         self._configure_signal_tree_tags(self.active_tree)
         self.closed_tree = self._create_table(closed_tab)
-        closed_filter_frame = ttk.Frame(
-            closed_scenario_tab,
-            padding=(4, 4, 4, 2),
-        )
-        closed_filter_frame.pack(fill="x")
-        ttk.Checkbutton(
-            closed_filter_frame,
-            text="검토등급",
-            variable=self.closed_grade_filter_enabled_var,
-            command=self._refresh_closed_scenario_view,
-            style="Filter.TCheckbutton",
-        ).pack(side="left")
-        grade_combo = ttk.Combobox(
-            closed_filter_frame,
-            textvariable=self.closed_grade_filter_var,
-            values=("우선검토", "일반검토", "확인 필요", "해당 없음"),
-            width=10,
-            state="readonly",
-        )
-        grade_combo.pack(side="left", padx=(2, 12))
-        grade_combo.bind(
-            "<<ComboboxSelected>>",
-            lambda _event: self._refresh_closed_scenario_view(),
-        )
-
-        ttk.Checkbutton(
-            closed_filter_frame,
-            text="차트 강도",
-            variable=self.closed_score_filter_enabled_var,
-            command=self._refresh_closed_scenario_view,
-            style="Filter.TCheckbutton",
-        ).pack(side="left")
-        self.closed_score_min_entry = ttk.Entry(
-            closed_filter_frame,
-            textvariable=self.closed_score_min_var,
-            width=6,
-        )
-        self.closed_score_min_entry.pack(side="left", padx=(2, 3))
-        ttk.Label(closed_filter_frame, text="~").pack(side="left")
-        self.closed_score_max_entry = ttk.Entry(
-            closed_filter_frame,
-            textvariable=self.closed_score_max_var,
-            width=6,
-        )
-        self.closed_score_max_entry.pack(side="left", padx=(3, 6))
-        for entry in (self.closed_score_min_entry, self.closed_score_max_entry):
-            entry.bind("<Return>", lambda _event: self._refresh_closed_scenario_view())
-        ttk.Button(
-            closed_filter_frame,
-            text="적용",
-            command=self._refresh_closed_scenario_view,
-        ).pack(side="left", padx=(0, 4))
-        ttk.Button(
-            closed_filter_frame,
-            text="초기화",
-            command=self._reset_closed_scenario_filters,
-        ).pack(side="left")
-        ttk.Label(
-            closed_filter_frame,
-            textvariable=self.closed_filter_status_var,
-        ).pack(side="right")
-
-        closed_scenario_table_frame = ttk.Frame(closed_scenario_tab)
-        closed_scenario_table_frame.pack(fill="both", expand=True)
-        self.closed_scenario_tree = self._create_table(closed_scenario_table_frame)
+        self.closed_scenario_tree = self._create_table(closed_scenario_tab)
         self._configure_history_tree_tags(self.closed_scenario_tree)
-        self._build_field_performance_tab(field_tab)
-        self._build_signal_validation_tab(validation_tab)
         self.failure_tree = self._create_table(failure_tab)
         self._build_watchlist_tab(watchlist_tab)
 
@@ -352,49 +275,14 @@ class LayoutMixin:
         populate_table(
             self.closed_scenario_tree,
             pd.DataFrame(columns=CLOSED_SCENARIO_DISPLAY_COLUMNS),
-            column_bounds=CLOSED_SCENARIO_COLUMN_BOUNDS,
         )
-        populate_table(self.field_tree, pd.DataFrame(columns=FIELD_DISPLAY_COLUMNS))
-        populate_table(self.ranking_tree, pd.DataFrame(columns=RANKING_DISPLAY_COLUMNS))
         populate_table(self.failure_tree, pd.DataFrame(columns=SCAN_FAILURE_COLUMNS))
 
-        self.scan_tree.bind(
-            "<<TreeviewSelect>>",
-            lambda event: self._on_scan_row_select(event, self.scan_tree),
-        )
-        self._bind_chart_strength_tooltip(self.scan_tree, "신호일")
-        self._bind_chart_strength_tooltip(self.active_tree, "2차신호일")
-        self._bind_chart_strength_tooltip(self.closed_tree, "3차판정일")
-        self._bind_chart_strength_tooltip(
-            self.closed_scenario_tree,
-            "3차판정일",
-        )
-        self._bind_chart_strength_tooltip(
-            self.buy_tree,
-            "3차판정일",
-            ticker_column=None,
-        )
-        self.active_tree.bind(
-            "<<TreeviewSelect>>",
-            lambda event: self._on_scan_row_select(event, self.active_tree),
-        )
-        self.closed_tree.bind(
-            "<<TreeviewSelect>>",
-            lambda event: self._on_scan_row_select(event, self.closed_tree),
-        )
-        self.closed_scenario_tree.bind(
-            "<<TreeviewSelect>>",
-            self._on_closed_scenario_select,
-        )
-        self.closed_scenario_tree.bind(
-            "<Double-1>",
-            self._on_closed_scenario_double_click,
-        )
-        self.ranking_tree.bind(
-            "<<TreeviewSelect>>",
-            lambda event: self._on_scan_row_select(event, self.ranking_tree),
-        )
-        for tree in (self.scan_tree, self.active_tree, self.closed_tree, self.ranking_tree):
+        for tree in (self.scan_tree, self.active_tree, self.closed_tree):
+            tree.bind(
+                "<<TreeviewSelect>>",
+                lambda event, source=tree: self._on_scan_row_select(event, source),
+            )
             tree.bind(
                 "<Double-1>",
                 lambda event, source=tree: self._on_ticker_double_click(
@@ -403,6 +291,14 @@ class LayoutMixin:
                     "티커",
                 ),
             )
+        self.closed_scenario_tree.bind(
+            "<<TreeviewSelect>>",
+            self._on_closed_scenario_select,
+        )
+        self.closed_scenario_tree.bind(
+            "<Double-1>",
+            self._on_closed_scenario_double_click,
+        )
 
     def _create_table(self, parent: tk.Widget) -> ttk.Treeview:
         frame = ttk.Frame(parent)
@@ -425,92 +321,6 @@ class LayoutMixin:
         frame.rowconfigure(0, weight=1)
         frame.columnconfigure(0, weight=1)
         return tree
-
-    def _build_field_performance_tab(self, parent: ttk.Frame) -> None:
-        parent.columnconfigure(0, weight=1)
-        parent.rowconfigure(2, weight=1)
-
-        controls = ttk.Frame(parent, padding=(4, 4, 4, 0))
-        controls.grid(row=0, column=0, sticky="ew")
-        ttk.Label(controls, text="구분").pack(side="left")
-        level_combo = ttk.Combobox(
-            controls,
-            textvariable=self.field_level_var,
-            values=("섹터", "산업"),
-            width=8,
-            state="readonly",
-        )
-        level_combo.pack(side="left", padx=(4, 14))
-        ttk.Label(controls, text="분석 기간").pack(side="left")
-        horizon_combo = ttk.Combobox(
-            controls,
-            textvariable=self.field_horizon_var,
-            values=("3개월", "6개월", "9개월", "12개월"),
-            width=8,
-            state="readonly",
-        )
-        horizon_combo.pack(side="left", padx=(4, 14))
-        ttk.Label(controls, text="종목 정렬").pack(side="left")
-        sort_combo = ttk.Combobox(
-            controls,
-            textvariable=self.ranking_sort_var,
-            values=(
-                "종합점수",
-                "승률",
-                "평균 손익률",
-                "매수 도달률",
-                "평소 매수 대비 초과",
-                "S&P 대비 초과",
-            ),
-            width=14,
-            state="readonly",
-        )
-        sort_combo.pack(side="left", padx=(4, 0))
-        for combo in (level_combo, horizon_combo, sort_combo):
-            combo.bind("<<ComboboxSelected>>", self._on_field_control_change)
-
-        ttk.Label(
-            parent,
-            textvariable=self.field_status_var,
-            padding=(4, 5, 4, 5),
-        ).grid(row=1, column=0, sticky="ew")
-
-        panes = ttk.Panedwindow(parent, orient="vertical")
-        panes.grid(row=2, column=0, sticky="nsew", padx=4, pady=(0, 4))
-        field_frame = ttk.LabelFrame(panes, text="분야별 종합 성과", padding=4)
-        ranking_frame = ttk.LabelFrame(panes, text="선택 분야 종목 순위", padding=4)
-        panes.add(field_frame, weight=1)
-        panes.add(ranking_frame, weight=1)
-        self.field_tree = self._create_table(field_frame)
-        self.ranking_tree = self._create_table(ranking_frame)
-        self.field_tree.bind("<<TreeviewSelect>>", self._on_field_select)
-
-    def _build_signal_validation_tab(self, parent: ttk.Frame) -> None:
-        ttk.Label(
-            parent,
-            text=(
-                "평소 매수 승률: 같은 종목을 신호 앞뒤 1년 안의 아무 주에나 샀을 때의 승률입니다. "
-                "신호 승률이 이보다 높고 평소 매수 대비 초과가 플러스여야 매수 타이밍 효과가 "
-                "있다고 볼 수 있습니다.  S&P 이긴 비율·S&P 대비 초과: 같은 주에 S&P 500을 "
-                "사서 같은 기간 들고 있었을 때와 비교한 값입니다.  현재 Top 100 종목 기준이라 "
-                "생존편향이 포함되어 있습니다."
-            ),
-            wraplength=720,
-            justify="left",
-            padding=(4, 4, 4, 2),
-        ).pack(fill="x")
-        ttk.Label(
-            parent,
-            textvariable=self.validation_status_var,
-            padding=(4, 0, 4, 4),
-        ).pack(fill="x")
-        table_frame = ttk.Frame(parent)
-        table_frame.pack(fill="both", expand=True)
-        self.validation_tree = self._create_table(table_frame)
-        populate_table(
-            self.validation_tree,
-            pd.DataFrame(columns=SIGNAL_VALIDATION_DISPLAY_COLUMNS),
-        )
 
     def _screen_size(self) -> tuple[int, int]:
         return self.winfo_screenwidth(), self.winfo_screenheight()

@@ -1,1 +1,1 @@
-"""Parts of the MMRM scanner GUI, used by app.py."""
+"""Parts of the TFMR scanner GUI, used by app.py."""

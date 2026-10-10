@@ -1,4 +1,4 @@
-"""Scanner dashboard cards and 3/6/9/12-month cards."""
+"""Scanner dashboard cards and the selected ticker's summary cards."""
 
 from __future__ import annotations
 
@@ -7,20 +7,18 @@ from tkinter import ttk
 
 import pandas as pd
 
-from scenario_tracker import latest_scan_date, market_today
-from gui.config import ACTIVE_SCENARIOS_TAB, HORIZON_CARD_MONTHS, SCAN_EVENTS_TAB
+from gui.config import ACTIVE_SCENARIOS_TAB, SCAN_EVENTS_TAB
 from gui.tooltips import (
     DASHBOARD_CARD_DESCRIPTIONS,
-    HORIZON_CARD_TERMS,
-    TERM_DESCRIPTIONS,
+    SUMMARY_CARD_DESCRIPTIONS,
     attach_widget_tooltip,
 )
-from gui.formatting import dashboard_summary, horizon_card_lines
+from gui.formatting import dashboard_summary, trade_summary_cards
 from gui.tables import card_grid_columns
 
 
 class CardsMixin:
-    """Scanner dashboard cards and 3/6/9/12-month cards. Mixed into BuyPointApp; relies on its attributes."""
+    """Scanner dashboard cards and ticker summary cards. Mixed into BuyPointApp; relies on its attributes."""
 
     @staticmethod
     def _make_responsive_card_row(
@@ -57,10 +55,10 @@ class CardsMixin:
         frame = ttk.Frame(parent, padding=(0, 8, 0, 0))
         frame.grid(row=1, column=0, sticky="ew")
         cards = (
-            ("buy", "이번 스캔 3차 매수", SCAN_EVENTS_TAB),
-            ("wait3", "3차 신호 대기", ACTIVE_SCENARIOS_TAB),
-            ("wait2", "2차 신호 대기", ACTIVE_SCENARIOS_TAB),
-            ("last", "마지막 스캔", None),
+            ("first", "이번 스캔 신규 1차", SCAN_EVENTS_TAB),
+            ("add", "이번 스캔 추가매수", SCAN_EVENTS_TAB),
+            ("sell", "이번 스캔 매도 신호", SCAN_EVENTS_TAB),
+            ("holding", "보유 중", ACTIVE_SCENARIOS_TAB),
         )
         self.dashboard_cards: dict[str, dict[str, object]] = {}
         dashboard_frames: list[ttk.Frame] = []
@@ -96,69 +94,55 @@ class CardsMixin:
         self._make_responsive_card_row(frame, dashboard_frames, min_card_width=170)
 
     def _refresh_dashboard(self) -> None:
-        last_scan = self.latest_scan_date
-        if last_scan is None:
-            last_scan = latest_scan_date(self.latest_active_scenarios)
         summary = dashboard_summary(
             self.latest_scan_events,
             self.latest_active_scenarios,
             has_scan_results=(
                 self.latest_scan_date is not None or self.last_scan_time is not None
             ),
-            last_scan_date=last_scan,
-            today=market_today(),
-            last_scan_time=self.last_scan_time,
-            now=pd.Timestamp.now(),
         )
         for key, (value, note, alert) in summary.items():
             card = self.dashboard_cards[key]
             card["value"].set(value)
             card["note"].set(note)
             card["value_label"].configure(
-                style="CardAlert.TLabel" if alert and key == "buy" else "CardValue.TLabel"
-            )
-            card["note_label"].configure(
-                style="CardNoteAlert.TLabel" if alert else "CardNote.TLabel"
+                style="CardAlert.TLabel" if alert and key == "sell" else "CardValue.TLabel"
             )
 
-    def _build_horizon_cards(self, parent: ttk.Frame) -> None:
+    def _build_summary_cards(self, parent: ttk.Frame) -> None:
         frame = ttk.Frame(parent, padding=(0, 6, 0, 0))
         frame.pack(fill="x")
-        self.horizon_cards: dict[int, dict[str, object]] = {}
-        horizon_frames: list[ttk.Frame] = []
-        for months in HORIZON_CARD_MONTHS:
+        self.summary_cards: dict[str, tuple[tk.StringVar, tk.StringVar]] = {}
+        card_frames: list[ttk.Frame] = []
+        for key, title in (
+            ("closed", "매도 완료"),
+            ("win", "승률"),
+            ("average", "평균 수익률"),
+        ):
             card = ttk.Frame(frame, style="Card.TFrame", padding=(10, 6))
-            horizon_frames.append(card)
-            ttk.Label(card, text=f"{months}개월 후", style="CardTitle.TLabel").pack(anchor="w")
-            labels = {}
-            for name, style in (
-                ("win", "HorizonValue.TLabel"),
-                ("sample", "CardNote.TLabel"),
-                ("nearby", "CardNote.TLabel"),
-                ("sp500", "CardNote.TLabel"),
-            ):
-                variable = tk.StringVar(value="")
-                label = ttk.Label(card, textvariable=variable, style=style)
-                label.pack(anchor="w")
-                labels[name] = (variable, label)
+            card_frames.append(card)
+            value_var = tk.StringVar(value="-")
+            note_var = tk.StringVar(value="")
+            widgets = (
+                card,
+                ttk.Label(card, text=title, style="CardTitle.TLabel"),
+                ttk.Label(card, textvariable=value_var, style="HorizonValue.TLabel"),
+                ttk.Label(card, textvariable=note_var, style="CardNote.TLabel"),
+            )
+            for widget in widgets[1:]:
+                widget.pack(anchor="w")
+            for widget in widgets:
                 attach_widget_tooltip(
                     self.term_tooltip,
-                    label,
-                    TERM_DESCRIPTIONS[HORIZON_CARD_TERMS[name]],
+                    widget,
+                    SUMMARY_CARD_DESCRIPTIONS[key],
                 )
-            self.horizon_cards[months] = labels
-        self._make_responsive_card_row(frame, horizon_frames, min_card_width=165)
-        self._set_horizon_cards(None)
+            self.summary_cards[key] = (value_var, note_var)
+        self._make_responsive_card_row(frame, card_frames, min_card_width=165)
+        self._set_summary_cards(None)
 
-    def _set_horizon_cards(self, performance_by_horizon: dict[int, pd.Series] | None) -> None:
-        for months, labels in self.horizon_cards.items():
-            row = performance_by_horizon.get(months) if performance_by_horizon else None
-            for name, (text, tone) in horizon_card_lines(row).items():
-                variable, label = labels[name]
-                variable.set(text)
-                if name in {"nearby", "sp500"}:
-                    label.configure(
-                        style={"good": "CardGood.TLabel", "bad": "CardBad.TLabel"}.get(
-                            tone, "CardNote.TLabel"
-                        )
-                    )
+    def _set_summary_cards(self, cases: pd.DataFrame | None) -> None:
+        for key, (value, note) in trade_summary_cards(cases).items():
+            value_var, note_var = self.summary_cards[key]
+            value_var.set(value)
+            note_var.set(note)

@@ -17,47 +17,28 @@ from gui.config import (
     LAST_SCAN_INFO_PATH,
     LAST_SCAN_TABLE_PATHS,
     OUTPUT_DIR,
-    RETURN_DISPLAY_COLUMNS,
 )
-from gui.formatting import signal_cycles_for_display
+from gui.formatting import trade_cases_for_display
 
 
-def save_outputs(
+def save_trade_case_outputs(
     ticker: str,
-    buy_points: pd.DataFrame,
+    cases: pd.DataFrame,
+    buys: pd.DataFrame,
     full_table: pd.DataFrame,
     output_dir: Path | str = OUTPUT_DIR,
-) -> tuple[Path, Path]:
+) -> tuple[Path, Path, Path]:
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    buy_path = output_dir / f"{ticker}_buy_points.csv"
+    case_path = output_dir / f"{ticker}_trade_cases.csv"
+    buy_path = output_dir / f"{ticker}_trade_buys.csv"
     full_path = output_dir / f"{ticker}_full_table.csv"
 
-    buy_points.to_csv(buy_path, index_label="매수포인트날짜", encoding="utf-8-sig")
+    trade_cases_for_display(cases).to_csv(case_path, index=False, encoding="utf-8-sig")
+    buys.to_csv(buy_path, index=False, encoding="utf-8-sig")
     full_table.to_csv(full_path, index_label="Date", encoding="utf-8-sig")
-    return buy_path, full_path
-
-
-def save_signal_outputs(
-    ticker: str,
-    signal_cycles: pd.DataFrame,
-    full_table: pd.DataFrame,
-    output_dir: Path | str = OUTPUT_DIR,
-) -> tuple[Path, Path]:
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    signal_path = output_dir / f"{ticker}_signal_cycles.csv"
-    full_path = output_dir / f"{ticker}_full_table.csv"
-
-    signal_cycles_for_display(signal_cycles).to_csv(
-        signal_path,
-        index=False,
-        encoding="utf-8-sig",
-    )
-    full_table.to_csv(full_path, index_label="Date", encoding="utf-8-sig")
-    return signal_path, full_path
+    return case_path, buy_path, full_path
 
 
 def load_closed_scenarios(
@@ -72,10 +53,8 @@ def load_closed_scenarios(
         data = data.rename(columns={"순위": "현재 시총순위"})
     data = data.reindex(columns=CLOSED_SCENARIO_DISPLAY_COLUMNS)
     data[SP500_STATUS_COLUMN] = data[SP500_STATUS_COLUMN].fillna("확인불가")
-    for column in ("1차신호일", "2차신호일", "3차판정일"):
+    for column in ("1차매수일", "매도일"):
         data[column] = pd.to_datetime(data[column], errors="coerce")
-    for column in RETURN_DISPLAY_COLUMNS:
-        data[column] = data[column].map(_restore_saved_return_value)
     return data
 
 
@@ -92,21 +71,6 @@ def save_closed_scenarios(
     return path
 
 
-def _restore_saved_return_value(value: object) -> object:
-    """Restore numeric CSV values while preserving progress/status labels."""
-    if pd.isna(value) or isinstance(value, (int, float)):
-        return value
-    text = str(value).strip()
-    if not text:
-        return value
-    if text.endswith("%"):
-        text = text[:-1].strip()
-    try:
-        return float(text)
-    except ValueError:
-        return value
-
-
 def save_tracker_scan_outputs(
     events: pd.DataFrame,
     active_scenarios: pd.DataFrame,
@@ -119,10 +83,10 @@ def save_tracker_scan_outputs(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     date_text = scan_date.strftime("%Y-%m-%d")
-    event_path = output_dir / f"MMRM_signal_events_{date_text}.csv"
-    active_path = output_dir / f"MMRM_active_scenarios_{date_text}.csv"
-    closed_path = output_dir / f"MMRM_closed_results_{date_text}.csv"
-    failure_path = output_dir / f"MMRM_Top100_scan_failures_{date_text}.csv"
+    event_path = output_dir / f"TFMR_signal_events_{date_text}.csv"
+    active_path = output_dir / f"TFMR_active_scenarios_{date_text}.csv"
+    closed_path = output_dir / f"TFMR_closed_results_{date_text}.csv"
+    failure_path = output_dir / f"TFMR_Top100_scan_failures_{date_text}.csv"
 
     events.to_csv(event_path, index=False, encoding="utf-8-sig")
     active_scenarios.to_csv(active_path, index=False, encoding="utf-8-sig")
@@ -131,31 +95,7 @@ def save_tracker_scan_outputs(
     return event_path, active_path, closed_path, failure_path
 
 
-def save_analytics_outputs(
-    sector_performance: pd.DataFrame,
-    industry_performance: pd.DataFrame,
-    field_rankings: pd.DataFrame,
-    output_dir: Path | str = OUTPUT_DIR,
-    date_suffix: str | None = None,
-) -> tuple[Path, Path, Path]:
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    suffix = f"_{date_suffix}" if date_suffix else ""
-    prefix = "MMRM" if date_suffix else "mmrm"
-    sector_path = output_dir / f"{prefix}_sector_performance{suffix}.csv"
-    industry_path = output_dir / f"{prefix}_industry_performance{suffix}.csv"
-    ranking_path = output_dir / f"{prefix}_field_stock_rankings{suffix}.csv"
-    sector_performance.to_csv(sector_path, index=False, encoding="utf-8-sig")
-    industry_performance.to_csv(industry_path, index=False, encoding="utf-8-sig")
-    field_rankings.to_csv(ranking_path, index=False, encoding="utf-8-sig")
-    return sector_path, industry_path, ranking_path
-
-
 def save_scan_state(
-    sector_performance: pd.DataFrame,
-    industry_performance: pd.DataFrame,
-    field_rankings: pd.DataFrame,
     active_scenarios: pd.DataFrame,
     closed_scenarios: pd.DataFrame,
     events: pd.DataFrame,
@@ -164,7 +104,6 @@ def save_scan_state(
     scanned_at: pd.Timestamp,
 ) -> None:
     """Write the files the next app start and scan read back from outputs/."""
-    save_analytics_outputs(sector_performance, industry_performance, field_rankings)
     save_active_scenarios(active_scenarios)
     save_closed_scenarios(closed_scenarios)
     save_last_scan(events, closed_results, failures, scanned_at)
@@ -172,10 +111,8 @@ def save_scan_state(
 
 LAST_SCAN_DATE_COLUMNS = (
     "신호일",
-    "1차신호일",
-    "2차신호일",
-    "3차판정일",
-    "종료일",
+    "1차매수일",
+    "매도일",
     "데이터기준일",
 )
 

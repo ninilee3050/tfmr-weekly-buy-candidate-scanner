@@ -6,7 +6,6 @@ from market_context import (
     SP500_STATUS_COLUMN,
     annotate_sp500_status,
     sp500_status_at,
-    sp500_summary_for_cycle,
 )
 
 
@@ -32,31 +31,26 @@ def test_sp500_status_uses_last_week_available_at_reference_date() -> None:
     assert above.date == pd.Timestamp("2024-01-08")
 
 
-def test_scenario_market_status_freezes_completed_and_uses_latest_for_pending() -> None:
-    scenarios = pd.DataFrame(
+def test_market_status_uses_the_sell_week_and_the_latest_week_for_held_cases() -> None:
+    cases = pd.DataFrame(
         [
-            {"결과": "매수 성공", "3차판정일": "2024-01-08"},
-            {"결과": "3차 신호 대기", "3차판정일": pd.NaT},
+            {"결과": "매도 완료", "매도일": "2024-01-08"},
+            {"결과": "보유 중", "매도일": pd.NaT},
         ]
     )
 
     result = annotate_sp500_status(
-        scenarios,
+        cases,
         benchmark_frame(),
-        reference_date_columns=("3차판정일",),
-        pending_uses_latest=True,
+        reference_date_columns=("매도일",),
     )
 
     assert result.loc[0, SP500_STATUS_COLUMN] == "50주선 위"
     assert result.loc[1, SP500_STATUS_COLUMN] == "50주선 아래"
 
 
-def test_cycle_summary_contains_market_values_without_changing_signal() -> None:
-    cycle = pd.Series(
-        {"Outcome": "매수 성공", "ThirdDecisionDate": pd.Timestamp("2024-01-08")}
-    )
-
-    summary = sp500_summary_for_cycle(benchmark_frame(), cycle)
+def test_status_summary_contains_market_values() -> None:
+    summary = sp500_status_at(benchmark_frame(), pd.Timestamp("2024-01-08")).summary
 
     assert "S&P500 상태: 50주선 위" in summary
     assert "2024-01-08" in summary

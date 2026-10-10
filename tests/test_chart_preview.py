@@ -29,11 +29,10 @@ from chart_preview import (
     ZOOM_OUT_FACTOR,
     ChartPreviewWindow,
     comparison_view_indices,
-    cycle_return_summary,
+    case_result_summary,
     cycle_view_dates,
     cycle_view_indices,
     expanded_comparison_width,
-    format_cycle_return,
     moving_average_styles,
     price_crosshair_y,
 )
@@ -118,25 +117,17 @@ def test_synchronized_crosshair_maps_each_chart_close_to_its_own_price_scale() -
     assert price_crosshair_y(data, panel, float("nan")) is None
 
 
-def test_cycle_return_summary_uses_stored_returns_and_statuses() -> None:
-    cycle = pd.Series(
-        {
-            "Return3M": 12.345,
-            "Return3MStatus": "확정",
-            "Return6M": -4.5,
-            "Return6MStatus": "확정",
-            "Return9M": float("nan"),
-            "Return9MStatus": "진행 중",
-            "Return12M": float("nan"),
-            "Return12MStatus": "데이터 없음",
-        }
+def test_case_result_summary_names_realized_and_open_results() -> None:
+    sold = pd.Series(
+        {"AveragePrice": 375.231, "ReturnPct": 6.766, "HoldingWeeks": 11, "Outcome": "매도 완료"}
+    )
+    held = pd.Series(
+        {"AveragePrice": 55.0767, "ReturnPct": -1.374, "HoldingWeeks": 3, "Outcome": "보유 중"}
     )
 
-    assert cycle_return_summary(cycle) == (
-        "3M +12.35% · 6M -4.50% · 9M 진행 중 · 12M 데이터 없음"
-    )
-    assert format_cycle_return(float("nan"), "해당 없음") == "해당 없음"
-    assert cycle_return_summary(None) == ""
+    assert case_result_summary(sold) == "평단 375.23 · 수익률 +6.77% · 11주 보유"
+    assert case_result_summary(held) == "평단 55.08 · 평가손익 -1.37% · 3주 보유"
+    assert case_result_summary(None) == ""
 
 
 def test_navigation_state_disables_only_the_unavailable_direction() -> None:
@@ -258,40 +249,38 @@ def test_theme_specific_ma_colors_keep_periods_and_widths() -> None:
     assert DARK_MA_COLOR_OVERRIDES == {"MA_150": "#c77832"}
 
 
-def test_completed_cycle_view_includes_one_year_before_and_after() -> None:
+def test_sold_case_view_includes_half_a_year_before_and_after() -> None:
     index = pd.date_range("2020-01-06", "2025-12-29", freq="W-MON")
     cycle = pd.Series(
         {
-            "FirstSignalDate": pd.Timestamp("2022-06-06"),
-            "SecondSignalDate": pd.Timestamp("2022-10-03"),
-            "ThirdDecisionDate": pd.Timestamp("2023-02-06"),
-            "Outcome": "매수 성공",
+            "FirstBuyDate": pd.Timestamp("2022-06-06"),
+            "SellDate": pd.Timestamp("2022-08-01"),
+            "Outcome": "매도 완료",
         }
     )
 
     start, end = cycle_view_dates(index, cycle)
     start_position, end_position = cycle_view_indices(index, cycle)
 
-    assert start == pd.Timestamp("2021-06-07")
-    assert end == pd.Timestamp("2024-02-05")
+    assert start == pd.Timestamp("2021-12-06")
+    assert end == pd.Timestamp("2023-01-30")
     assert index[start_position] == start
     assert index[end_position] == end
 
 
-def test_waiting_cycle_view_extends_through_latest_available_week() -> None:
+def test_held_case_view_extends_through_latest_available_week() -> None:
     index = pd.date_range("2020-01-06", "2025-12-29", freq="W-MON")
     cycle = pd.Series(
         {
-            "FirstSignalDate": pd.Timestamp("2021-03-01"),
-            "SecondSignalDate": pd.NaT,
-            "ThirdDecisionDate": pd.NaT,
-            "Outcome": "2차 신호 대기",
+            "FirstBuyDate": pd.Timestamp("2021-03-01"),
+            "SellDate": pd.NaT,
+            "Outcome": "보유 중",
         }
     )
 
     start, end = cycle_view_dates(index, cycle)
 
-    assert start == pd.Timestamp("2020-03-02")
+    assert start == pd.Timestamp("2020-08-31")
     assert end == index[-1]
 
 
@@ -382,16 +371,12 @@ def test_hover_label_colors_are_made_readable_on_dark_panels() -> None:
     assert readable_text_color("#ef4444", "#ffffff", "#111827") == "#ef4444"
 
 
-def test_header_hides_returns_for_cycles_without_a_buy() -> None:
-    cycle = pd.Series(
-        {
-            column: value
-            for label in ("3M", "6M", "9M", "12M")
-            for column, value in (
-                (f"Return{label}", float("nan")),
-                (f"Return{label}Status", "해당 없음"),
-            )
-        }
-    )
+def test_signal_lines_cover_every_buy_round_and_the_sell() -> None:
+    from chart_preview import SIGNAL_STYLES
+    from scanner import BUY_DATE_COLUMNS, TRADE_CASE_COLUMNS
 
-    assert cycle_return_summary(cycle) == ""
+    columns = [column for _label, column, _color in SIGNAL_STYLES]
+
+    assert columns == [*BUY_DATE_COLUMNS, "SellDate"]
+    assert set(columns) <= set(TRADE_CASE_COLUMNS)
+    assert len({color for _label, _column, color in SIGNAL_STYLES}) == len(SIGNAL_STYLES)
