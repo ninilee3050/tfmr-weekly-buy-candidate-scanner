@@ -311,6 +311,24 @@ def test_base_candle_after_a_skipped_pullback_is_pullback_number_two() -> None:
     assert cases.iloc[0]["BuyRounds"] == 1
 
 
+def test_bounce_above_ma20_but_under_ma5_does_not_start_a_new_pullback() -> None:
+    data = _frame(
+        [
+            _row(close=99, ma20=100, ma50=101),
+            _row(open_=104, close=105, ma20=102, ma50=101),
+            _row(open_=96, close=94, ma5=97, ma20=100, ma50=99, ma150=96, ma200=95),
+            # Bullish week back above MA20 only: the pullback is not over.
+            _row(open_=99, close=100.5, ma5=101, ma20=100, ma50=99, ma150=96, ma200=95),
+            _row(open_=99, close=96, ma5=98, ma20=100, ma50=99),
+        ]
+    )
+
+    cases, _buys, full = scan_trade_cases(data)
+
+    assert list(full["tfmr_pullback_number"]) == [0, 0, 1, 1, 1]
+    assert cases.iloc[0]["PullbackNumber"] == 1
+
+
 def test_pullback_count_restarts_with_a_new_golden_cross() -> None:
     rows = [
         _row(close=99, ma20=100, ma50=101),

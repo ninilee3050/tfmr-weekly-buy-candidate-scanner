@@ -60,10 +60,12 @@ def add_buy_base_columns(data: pd.DataFrame) -> pd.DataFrame:
     and Close > MA200 is the base candle.  A cycle yields one base candle.
 
     ``tfmr_pullback_number`` counts the pullbacks of the cycle since its
-    golden cross, whether or not they could be bought: a bearish week below
-    MA5 and MA20 starts a new pullback once a week has closed above MA20
-    since the previous one.  A base candle that follows a skipped pullback
-    therefore carries 2 or more.  This is not the buy round of a trade case.
+    golden cross, whether or not they could be bought.  A bearish week below
+    MA5 and MA20 starts a pullback; the next one is counted only after a
+    week has closed back above both MA5 and MA20.  Weeks that stay under
+    either average belong to the same pullback, however long it lasts.  A
+    base candle that follows a skipped pullback therefore carries 2 or more.
+    This is not the buy round of a trade case.
     """
     missing = [column for column in REQUIRED_COLUMNS if column not in data.columns]
     if missing:
@@ -101,7 +103,11 @@ def add_buy_base_columns(data: pd.DataFrame) -> pd.DataFrame:
             pullback_number = 0
 
         if in_cycle:
-            if _above(row, "Close", "MA_20"):
+            # The first pullback needs the same Close > MA20 history as a base
+            # candle; later ones need a full recovery above MA5 and MA20.
+            if _above(row, "Close", "MA_20") and (
+                pullback_number == 0 or _above(row, "Close", "MA_5")
+            ):
                 recovered_since_pullback = True
             elif recovered_since_pullback and _is_pullback(row) and _is_bearish(row):
                 pullback_number += 1
