@@ -484,7 +484,7 @@ class ScanMixin:
         for item, (_, row) in zip(
             self.closed_scenario_tree.get_children(), display.iterrows()
         ):
-            tag = history_case_tag("매도 완료", row.get("수익률"))
+            tag = history_case_tag("매도 완료", row.get("실수익률"))
             self.closed_scenario_tree.item(item, tags=(tag,) if tag else ())
 
     def _show_restored_scan(self) -> None:

@@ -149,6 +149,8 @@ def test_tracked_case_reports_missed_add_on_buy_and_this_weeks_sell() -> None:
     assert closed[0]["매수차수"] == 2
     assert closed[0]["수익률"] == pytest.approx((98 / ((100 + 96 * 2) / 3) - 1) * 100)
     assert closed[0]["보유주수"] == 2
+    assert closed[0]["실수익률"] < closed[0]["수익률"]
+    assert events[0]["실수익률"] != events[0]["실수익률"]  # NaN for a buy
 
 
 def test_buys_the_last_scan_saved_are_not_repeated() -> None:

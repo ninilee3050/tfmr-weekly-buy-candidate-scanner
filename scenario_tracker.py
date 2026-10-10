@@ -53,6 +53,7 @@ SCAN_EVENT_COLUMNS = [
     "가격",
     "평단가",
     "수익률",
+    "실수익률",
     "보유주수",
     "신호구분",
     "데이터기준일",
@@ -70,6 +71,7 @@ CLOSED_RESULT_COLUMNS = [
     "평단가",
     "매도가",
     "수익률",
+    "실수익률",
     "보유주수",
     "신호구분",
     "데이터기준일",
@@ -309,6 +311,7 @@ def _event_row(
         price = buy["Price"]
         average = buy["AveragePrice"]
         return_pct = float("nan")
+        net_return_pct = float("nan")
     else:
         sold = case["Outcome"] == OUTCOME_SOLD
         result = OUTCOME_SOLD if sold else PROVISIONAL_SELL_STATE
@@ -316,6 +319,7 @@ def _event_row(
         price = case["SellPrice"] if sold else last_close
         average = case["AveragePrice"]
         return_pct = case["ReturnPct"]
+        net_return_pct = case["NetReturnPct"]
 
     return {
         "순위": company.rank,
@@ -330,6 +334,7 @@ def _event_row(
         "가격": price,
         "평단가": average,
         "수익률": return_pct,
+        "실수익률": net_return_pct,
         "보유주수": int(case["HoldingWeeks"]),
         "신호구분": "이번 주" if signal_date == week_start else "미확인 기간",
         "데이터기준일": data_date,

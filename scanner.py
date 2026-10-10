@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 
 from data_provider import weekly_bar_in_progress
+from trade_fees import DEFAULT_FEES, FeeSchedule
 
 
 ADD_BUY_DROP_RATIO = 0.03
@@ -29,6 +30,7 @@ TRADE_CASE_COLUMNS = [
     "SellPrice",
     "Outcome",
     "ReturnPct",
+    "NetReturnPct",
     "HoldingWeeks",
     "LastEvent",
     "LastEventDate",
@@ -138,6 +140,7 @@ def scan_trade_cases(
     data: pd.DataFrame,
     now: pd.Timestamp | None = None,
     weekend_traded: bool = False,
+    fees: FeeSchedule = DEFAULT_FEES,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Follow every first buy base candle through add-on buys to the sell week.
 
@@ -149,6 +152,10 @@ def scan_trade_cases(
 
     A sell seen on the unfinished current week is not final: the case stays
     open and is flagged ``Provisional``, as is any buy on that week.
+
+    ``ReturnPct`` compares the sell price with the average buy price;
+    ``NetReturnPct`` is the same return after the trading costs in ``fees``.
+    For a case still held both use the latest close.
 
     Returns the cases, every buy of every case, and the annotated weekly table.
     """
@@ -188,13 +195,15 @@ def scan_trade_cases(
                 case["LastEventDate"] = pd.Timestamp(date).normalize()
                 case["Provisional"] = True
             else:
-                case_rows.append(_closed_case_row(case, date, position, row["Close"]))
+                case_rows.append(
+                    _closed_case_row(case, date, position, row["Close"], fees)
+                )
                 case = None
                 continue
         full.at[date, "tfmr_holding"] = True
 
     if case is not None:
-        case_rows.append(_open_case_row(case, full))
+        case_rows.append(_open_case_row(case, full, fees))
 
     cases = pd.DataFrame(case_rows, columns=TRADE_CASE_COLUMNS)
     buys = pd.DataFrame(buy_rows, columns=TRADE_BUY_COLUMNS)
@@ -324,6 +333,7 @@ def _closed_case_row(
     date: pd.Timestamp,
     position: int,
     price: float,
+    fees: FeeSchedule,
 ) -> dict[str, object]:
     date = pd.Timestamp(date).normalize()
     row = _case_row(case)
@@ -334,6 +344,7 @@ def _closed_case_row(
             "SellPrice": price,
             "Outcome": OUTCOME_SOLD,
             "ReturnPct": (price / row["AveragePrice"] - 1) * 100,
+            "NetReturnPct": _net_return_pct(case, price, fees),
             "HoldingWeeks": position - case["FirstBuyPosition"],
             "LastEvent": SELL_EVENT,
             "LastEventDate": date,
@@ -343,7 +354,16 @@ def _closed_case_row(
     return row
 
 
-def _open_case_row(case: dict[str, object], full: pd.DataFrame) -> dict[str, object]:
+def _net_return_pct(case: dict[str, object], price: float, fees: FeeSchedule) -> float:
+    quantity = case["Quantity"]
+    return fees.net_return_pct(case["Cost"], price * quantity, quantity)
+
+
+def _open_case_row(
+    case: dict[str, object],
+    full: pd.DataFrame,
+    fees: FeeSchedule,
+) -> dict[str, object]:
     row = _case_row(case)
     last_close = full.iloc[-1]["Close"]
     row.update(
@@ -357,6 +377,7 @@ def _open_case_row(case: dict[str, object], full: pd.DataFrame) -> dict[str, obj
             "SellPrice": float("nan"),
             "Outcome": OUTCOME_HOLDING,
             "ReturnPct": (last_close / row["AveragePrice"] - 1) * 100,
+            "NetReturnPct": _net_return_pct(case, last_close, fees),
             "HoldingWeeks": len(full) - 1 - case["FirstBuyPosition"],
         }
     )

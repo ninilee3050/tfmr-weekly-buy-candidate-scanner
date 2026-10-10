@@ -24,7 +24,7 @@ class HistoryChartMixin:
     ) -> None:
         tree = tree or self.buy_tree
         for item, (_, row) in zip(tree.get_children(), data.iterrows()):
-            tag = history_case_tag(row.get("결과"), row.get("수익률"))
+            tag = history_case_tag(row.get("결과"), row.get("실수익률"))
             tree.item(item, tags=(tag,) if tag else ())
 
     def _on_history_double_click(self, event) -> None:

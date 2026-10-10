@@ -87,6 +87,7 @@ def test_trade_cases_are_shown_with_korean_columns_and_units() -> None:
     assert _format_value(0, "눌림회차") == ""
     assert _format_value(sold["평단가"], "평단가") == "94.00"
     assert _format_value(sold["수익률"], "수익률") == "+4.26%"
+    assert _format_value(sold["실수익률"], "실수익률") == "+4.04%"
     assert _format_value(sold["보유주수"], "보유주수") == "1주"
     assert _format_value(display.iloc[1]["매도일"], "매도일") == ""
 
@@ -129,9 +130,9 @@ def test_history_rows_are_coloured_by_realized_return() -> None:
 def test_summary_cards_count_only_sold_cases() -> None:
     cards = trade_summary_cards(sold_and_held_cases())
 
-    assert cards["closed"] == ("1건", "보유 중 1건")
+    assert cards["closed"] == ("1건", "보유 중 1건 · 평균 1.0주")
     assert cards["win"] == ("100.0%", "1건 중 1건 수익")
-    assert cards["average"] == ("+4.26%", "평균 1.0주 보유")
+    assert cards["average"] == ("+4.04%", "수수료 전 +4.26%")
     assert trade_summary_cards(None)["closed"] == ("-", "")
     empty = sold_and_held_cases().iloc[0:0]
     assert trade_summary_cards(empty)["win"] == ("미산출", "매도 완료 없음")

@@ -116,8 +116,8 @@ class CardsMixin:
         card_frames: list[ttk.Frame] = []
         for key, title in (
             ("closed", "매도 완료"),
-            ("win", "승률"),
-            ("average", "평균 수익률"),
+            ("win", "승률 (수수료 후)"),
+            ("average", "평균 실수익률"),
         ):
             card = ttk.Frame(frame, style="Card.TFrame", padding=(10, 6))
             card_frames.append(card)

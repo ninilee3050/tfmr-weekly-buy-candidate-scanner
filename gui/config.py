@@ -18,6 +18,8 @@ LAST_SCAN_TABLE_PATHS = {
     "failures": OUTPUT_DIR / "tfmr_last_scan_failures.csv",
 }
 PULLBACK_NUMBER_COLUMN = "눌림회차"
+# Return after trading costs; the plain 수익률 is before them.
+NET_RETURN_COLUMN = "실수익률"
 TRADE_HISTORY_DISPLAY_COLUMNS = [
     "1차매수일",
     PULLBACK_NUMBER_COLUMN,
@@ -28,6 +30,7 @@ TRADE_HISTORY_DISPLAY_COLUMNS = [
     "매도가",
     "결과",
     "수익률",
+    NET_RETURN_COLUMN,
     "보유주수",
     SP500_STATUS_COLUMN,
 ]
@@ -44,6 +47,7 @@ SCAN_EVENT_DISPLAY_COLUMNS = [
     "가격",
     "평단가",
     "수익률",
+    NET_RETURN_COLUMN,
     "보유주수",
     SP500_STATUS_COLUMN,
     "신호구분",
@@ -77,6 +81,7 @@ CLOSED_RESULT_DISPLAY_COLUMNS = [
     "평단가",
     "매도가",
     "수익률",
+    NET_RETURN_COLUMN,
     "보유주수",
     SP500_STATUS_COLUMN,
 ]
@@ -91,6 +96,7 @@ CLOSED_SCENARIO_DISPLAY_COLUMNS = [
     "평단가",
     "매도가",
     "수익률",
+    NET_RETURN_COLUMN,
     "보유주수",
     SP500_STATUS_COLUMN,
 ]
@@ -104,6 +110,7 @@ TRADE_HISTORY_COLUMN_BOUNDS = {
     "매도가": (80, 95),
     "결과": (80, 95),
     "수익률": (80, 95),
+    NET_RETURN_COLUMN: (80, 95),
     "보유주수": (70, 80),
     SP500_STATUS_COLUMN: (90, 108),
 }

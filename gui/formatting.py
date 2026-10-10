@@ -17,6 +17,7 @@ from scenario_tracker import (
 from watchlist import market_cap_rank_text
 from gui.config import (
     MARKET_CAP_RANK_COLUMN,
+    NET_RETURN_COLUMN,
     PRICE_COLUMNS,
     PULLBACK_NUMBER_COLUMN,
     STRONG_RETURN_PERCENT,
@@ -45,7 +46,7 @@ def active_scenario_tag(state: object, rounds: object) -> str:
 
 
 def history_case_tag(result: object, return_pct: object) -> str:
-    """Colour a trade case by its realized return; held cases stay pale."""
+    """Colour a trade case by its after-fee return; held cases stay pale."""
     if str(result) != OUTCOME_SOLD:
         return "history_success_pending"
     value = pd.to_numeric(pd.Series([return_pct]), errors="coerce").iloc[0]
@@ -130,13 +131,15 @@ def trade_summary_cards(cases: pd.DataFrame | None) -> dict[str, tuple[str, str]
             "win": ("미산출", "매도 완료 없음"),
             "average": ("미산출", ""),
         }
-    returns = pd.to_numeric(sold["ReturnPct"], errors="coerce")
+    # Wins and the average use the return after trading costs.
+    returns = pd.to_numeric(sold["NetReturnPct"], errors="coerce")
+    gross = pd.to_numeric(sold["ReturnPct"], errors="coerce")
     wins = int((returns > 0).sum())
     weeks = pd.to_numeric(sold["HoldingWeeks"], errors="coerce").mean()
     return {
-        "closed": (f"{len(sold)}건", holding_note),
+        "closed": (f"{len(sold)}건", f"{holding_note} · 평균 {weeks:.1f}주"),
         "win": (f"{wins / len(sold) * 100:.1f}%", f"{len(sold)}건 중 {wins}건 수익"),
-        "average": (f"{returns.mean():+.2f}%", f"평균 {weeks:.1f}주 보유"),
+        "average": (f"{returns.mean():+.2f}%", f"수수료 전 {gross.mean():+.2f}%"),
     }
 
 
@@ -151,6 +154,7 @@ def trade_cases_for_display(data: pd.DataFrame) -> pd.DataFrame:
         "SellPrice": "매도가",
         "Outcome": "결과",
         "ReturnPct": "수익률",
+        "NetReturnPct": NET_RETURN_COLUMN,
         "HoldingWeeks": "보유주수",
     }
     display = data.rename(columns=rename_map).copy()
