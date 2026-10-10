@@ -147,6 +147,49 @@ AVERAGE_PRICE_COLOR = "#f59e0b"
 SELL_PRICE_COLOR = SIGNAL_STYLES[-1][2]
 PRICE_LEVEL_WIDTH = 2
 PRICE_TAG_HEIGHT = 16
+BUY_TABLE_ROW_HEIGHT = 16
+BUY_TABLE_PADDING = 7
+BUY_TABLE_COLUMN_GAP = 12
+# Room kept free under the panel title line and above the panel floor.
+BUY_TABLE_TOP_MARGIN = 26
+BUY_TABLE_EDGE_MARGIN = 8
+
+
+def buy_table_rows(buys: list[tuple[str, float]]) -> list[tuple[str, str, str, str]]:
+    """Text of the buy table: round, price, drop from the first buy, drop from the previous.
+
+    The second buy has only one earlier buy, so its previous-buy cell is empty.
+    """
+    rows = []
+    for index, (label, price) in enumerate(buys):
+        from_first = "" if index == 0 else f"1차 대비 {(price / buys[0][1] - 1) * 100:+.1f}%"
+        from_previous = (
+            "" if index < 2 else f"직전 대비 {(price / buys[index - 1][1] - 1) * 100:+.1f}%"
+        )
+        rows.append((label, f"{price:,.2f}", from_first, from_previous))
+    return rows
+
+
+def emptiest_corner(
+    corners: list[tuple[float, float]],
+    width: float,
+    height: float,
+    candles: list[tuple[float, float, float]],
+) -> tuple[float, float]:
+    """Top-left point of the corner box that covers the fewest candles.
+
+    ``candles`` holds (x, top y, bottom y) of each visible candle.  Earlier
+    corners win a tie.
+    """
+    def covered(corner: tuple[float, float]) -> int:
+        x0, y0 = corner
+        return sum(
+            1
+            for x, top, bottom in candles
+            if x0 <= x <= x0 + width and top <= y0 + height and bottom >= y0
+        )
+
+    return min(corners, key=covered)
 # A trade case lasts a few weeks, so half a year on each side keeps it readable.
 CASE_VIEW_MARGIN = pd.DateOffset(weeks=26)
 
@@ -683,6 +726,7 @@ class ChartPreviewWindow(tk.Toplevel):
         self._draw_oscillator(panels[5], visible, x_positions, "MFI")
         self._draw_signal_lines(panels)
         self._draw_buy_markers(panels[0], visible)
+        self._draw_buy_points(panels[0], visible)
         self._draw_date_axis(visible, x_positions, panels[-1].bottom)
         self._show_rightmost_values(panels, visible)
         self._redraw_benchmark()
@@ -1190,6 +1234,104 @@ class ChartPreviewWindow(tk.Toplevel):
             anchor="s",
             fill=color,
         )
+
+    def _case_buys(self) -> list[tuple[str, str, int, float]]:
+        """(label, colour, data position, price) of each buy of the shown case."""
+        buys = []
+        if self.cycle is None:
+            return buys
+        for label, column, color in SIGNAL_STYLES[:-1]:
+            date = _timestamp(self.cycle.get(column))
+            if date is None:
+                continue
+            position = int(self.data.index.searchsorted(date, side="left"))
+            if position >= len(self.data) or self.data.index[position] != date:
+                continue
+            # A buy is made at that week's close.
+            buys.append((label, color, position, float(self.data["Close"].iloc[position])))
+        return buys
+
+    def _draw_buy_points(self, panel: Panel, visible: pd.DataFrame) -> None:
+        """Dot each buy at its price and list the buys in a quiet corner.
+
+        The list gives every buy's price with its drop from the first buy
+        and from the buy before it.  It is skipped for a single buy, where
+        there is nothing to compare.
+        """
+        buys = self._case_buys()
+        if not buys or visible.empty:
+            return
+        low, high = _price_range(visible)
+        left, right = self._plot_edges()
+        count = max(1, self.view_end - self.view_start + 1)
+        background = self.palette["chart_panel"]
+
+        def x_at(index: int) -> float:
+            return left + ((index - self.view_start) + 0.5) / count * (right - left)
+
+        def y_at(value: float) -> float:
+            return _map_y(min(high, max(low, value)), low, high, panel)
+
+        for _label, color, position, price in buys:
+            if not self.view_start <= position <= self.view_end or not low <= price <= high:
+                continue
+            x, y = x_at(position), y_at(price)
+            self.canvas.create_oval(
+                x - 4, y - 4, x + 4, y + 4,
+                fill=color, outline=background, width=1, tags="buy_marker",
+            )
+
+        if len(buys) < 2:
+            return
+        rows = buy_table_rows([(label, price) for label, _color, _position, price in buys])
+        font = tkfont.Font(family=self.ui_font_family, size=9, weight="bold")
+        widths = [
+            max(font.measure(row[column]) for row in rows) for column in range(4)
+        ]
+        used = [width for width in widths if width > 0]
+        width = sum(used) + BUY_TABLE_COLUMN_GAP * (len(used) - 1) + BUY_TABLE_PADDING * 2
+        height = BUY_TABLE_ROW_HEIGHT * len(rows) + BUY_TABLE_PADDING * 2
+        top = panel.top + BUY_TABLE_TOP_MARGIN
+        bottom = panel.bottom - height - BUY_TABLE_EDGE_MARGIN
+        box_left = left + BUY_TABLE_EDGE_MARGIN
+        box_right = right - width - BUY_TABLE_EDGE_MARGIN
+        candles = [
+            (x_at(self.view_start + offset), y_at(float(row["High"])), y_at(float(row["Low"])))
+            for offset, (_date, row) in enumerate(visible.iterrows())
+        ]
+        x0, y0 = emptiest_corner(
+            [(box_left, top), (box_right, top), (box_right, bottom), (box_left, bottom)],
+            width,
+            height,
+            candles,
+        )
+        self.canvas.create_rectangle(
+            x0, y0, x0 + width, y0 + height,
+            fill=background, outline=self.palette["chart_border"], tags="buy_marker",
+        )
+        for row_index, (row, (_label, color, _position, _price)) in enumerate(zip(rows, buys)):
+            y = y0 + BUY_TABLE_PADDING + BUY_TABLE_ROW_HEIGHT * (row_index + 0.5)
+            x = x0 + BUY_TABLE_PADDING
+            for column, text in enumerate(row):
+                if widths[column] == 0:
+                    continue
+                # The round keeps its line colour; the numbers use plain text.
+                fill = (
+                    readable_text_color(color, background, self.palette["text"])
+                    if column == 0
+                    else self.palette["text"]
+                )
+                # Numbers line up on their right edge.
+                self.canvas.create_text(
+                    x + (widths[column] if column else 0),
+                    y,
+                    text=text,
+                    anchor="e" if column else "w",
+                    fill=fill,
+                    font=font,
+                    tags="buy_marker",
+                )
+                x += widths[column] + BUY_TABLE_COLUMN_GAP
 
     def _draw_price_tags(
         self,

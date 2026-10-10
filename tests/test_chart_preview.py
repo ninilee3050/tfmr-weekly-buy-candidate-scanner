@@ -371,6 +371,31 @@ def test_hover_label_colors_are_made_readable_on_dark_panels() -> None:
     assert readable_text_color("#ef4444", "#ffffff", "#111827") == "#ef4444"
 
 
+def test_buy_table_compares_each_buy_with_the_first_and_the_previous() -> None:
+    from chart_preview import buy_table_rows
+
+    rows = buy_table_rows(
+        [("1차", 430.41), ("2차", 411.11), ("3차", 367.96), ("4차", 348.95)]
+    )
+
+    assert rows == [
+        ("1차", "430.41", "", ""),
+        ("2차", "411.11", "1차 대비 -4.5%", ""),
+        ("3차", "367.96", "1차 대비 -14.5%", "직전 대비 -10.5%"),
+        ("4차", "348.95", "1차 대비 -18.9%", "직전 대비 -5.2%"),
+    ]
+
+
+def test_buy_table_goes_to_the_corner_that_covers_the_fewest_candles() -> None:
+    from chart_preview import emptiest_corner
+
+    corners = [(0.0, 0.0), (300.0, 0.0), (300.0, 200.0), (0.0, 200.0)]
+    high_on_the_left = [(50.0, 10.0, 60.0), (80.0, 20.0, 70.0), (350.0, 150.0, 190.0)]
+
+    assert emptiest_corner(corners, 100.0, 80.0, high_on_the_left) == (300.0, 0.0)
+    assert emptiest_corner(corners, 100.0, 80.0, []) == (0.0, 0.0)  # first corner on a tie
+
+
 def test_signal_lines_cover_every_buy_round_and_the_sell() -> None:
     from chart_preview import SIGNAL_STYLES
     from scanner import BUY_DATE_COLUMNS, TRADE_CASE_COLUMNS
