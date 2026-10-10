@@ -78,7 +78,7 @@ SORT_UNIT_MULTIPLIERS = {"K": 1e3, "M": 1e6, "B": 1e9, "T": 1e12}
 _SORT_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}")
 # A number, an optional unit, and optionally a "(3/4)" style detail; nothing else.
 _SORT_NUMBER_PATTERN = re.compile(
-    r"^([+-]?[\d,]*\.?\d+)\s*([KMBT])?(?:%p|%|점|건|개월|개|위|회차|차|주)?(?:\s*\(.*\))?$"
+    r"^([+-]?[\d,]*\.?\d+)\s*([KMBT])?(?:%p|%|점|건|개월|개|위|차|주)?(?:\s*\(.*\))?$"
 )
 
 
@@ -218,7 +218,7 @@ def _column_width(column: str) -> int:
         return 95
     if column == "결과":
         return 110
-    if column in {"매수차수", "보유주수", "눌림회차"}:
+    if column in {"매수차수", "보유주수"}:
         return 80
     if column in {"가격", "평단가", "매도가", "현재가", "최근매수가"}:
         return 90
