@@ -147,24 +147,32 @@ AVERAGE_PRICE_COLOR = "#f59e0b"
 SELL_PRICE_COLOR = SIGNAL_STYLES[-1][2]
 PRICE_LEVEL_WIDTH = 2
 PRICE_TAG_HEIGHT = 16
-BUY_TABLE_ROW_HEIGHT = 16
-BUY_TABLE_PADDING = 7
-BUY_TABLE_COLUMN_GAP = 12
+BUY_TABLE_ROW_HEIGHT = 20
+BUY_TABLE_CELL_PADDING = 9
+BUY_TABLE_HEADER = ("차수", "매수가", "1차 대비", "직전 대비")
+BUY_TABLE_EMPTY_CELL = "–"
 # Room kept free under the panel title line and above the panel floor.
 BUY_TABLE_TOP_MARGIN = 26
 BUY_TABLE_EDGE_MARGIN = 8
 
 
 def buy_table_rows(buys: list[tuple[str, float]]) -> list[tuple[str, str, str, str]]:
-    """Text of the buy table: round, price, drop from the first buy, drop from the previous.
+    """Cells of the buy table: round, price, drop from the first buy, drop from the previous.
 
-    The second buy has only one earlier buy, so its previous-buy cell is empty.
+    The first buy has nothing to compare with, and for the second buy the
+    previous buy is the first one, so those cells hold a dash.
     """
     rows = []
     for index, (label, price) in enumerate(buys):
-        from_first = "" if index == 0 else f"1차 대비 {(price / buys[0][1] - 1) * 100:+.1f}%"
+        from_first = (
+            BUY_TABLE_EMPTY_CELL
+            if index == 0
+            else f"{(price / buys[0][1] - 1) * 100:+.1f}%"
+        )
         from_previous = (
-            "" if index < 2 else f"직전 대비 {(price / buys[index - 1][1] - 1) * 100:+.1f}%"
+            BUY_TABLE_EMPTY_CELL
+            if index < 2
+            else f"{(price / buys[index - 1][1] - 1) * 100:+.1f}%"
         )
         rows.append((label, f"{price:,.2f}", from_first, from_previous))
     return rows
@@ -1284,13 +1292,18 @@ class ChartPreviewWindow(tk.Toplevel):
         if len(buys) < 2:
             return
         rows = buy_table_rows([(label, price) for label, _color, _position, price in buys])
-        font = tkfont.Font(family=self.ui_font_family, size=9, weight="bold")
+        font = tkfont.Font(family=self.ui_font_family, size=9)
+        bold = tkfont.Font(family=self.ui_font_family, size=9, weight="bold")
         widths = [
-            max(font.measure(row[column]) for row in rows) for column in range(4)
+            max(
+                font.measure(BUY_TABLE_HEADER[column]),
+                *(bold.measure(row[column]) for row in rows),
+            )
+            + BUY_TABLE_CELL_PADDING * 2
+            for column in range(len(BUY_TABLE_HEADER))
         ]
-        used = [width for width in widths if width > 0]
-        width = sum(used) + BUY_TABLE_COLUMN_GAP * (len(used) - 1) + BUY_TABLE_PADDING * 2
-        height = BUY_TABLE_ROW_HEIGHT * len(rows) + BUY_TABLE_PADDING * 2
+        width = sum(widths)
+        height = BUY_TABLE_ROW_HEIGHT * (len(rows) + 1)
         top = panel.top + BUY_TABLE_TOP_MARGIN
         bottom = panel.bottom - height - BUY_TABLE_EDGE_MARGIN
         box_left = left + BUY_TABLE_EDGE_MARGIN
@@ -1305,33 +1318,48 @@ class ChartPreviewWindow(tk.Toplevel):
             height,
             candles,
         )
+        border = self.palette["chart_border"]
         self.canvas.create_rectangle(
             x0, y0, x0 + width, y0 + height,
-            fill=background, outline=self.palette["chart_border"], tags="buy_marker",
+            fill=background, outline=border, tags="buy_marker",
         )
-        for row_index, (row, (_label, color, _position, _price)) in enumerate(zip(rows, buys)):
-            y = y0 + BUY_TABLE_PADDING + BUY_TABLE_ROW_HEIGHT * (row_index + 0.5)
-            x = x0 + BUY_TABLE_PADDING
-            for column, text in enumerate(row):
-                if widths[column] == 0:
-                    continue
-                # The round keeps its line colour; the numbers use plain text.
-                fill = (
-                    readable_text_color(color, background, self.palette["text"])
-                    if column == 0
-                    else self.palette["text"]
-                )
-                # Numbers line up on their right edge.
+        # Header band, then a rule under every row and between the columns.
+        self.canvas.create_rectangle(
+            x0, y0, x0 + width, y0 + BUY_TABLE_ROW_HEIGHT,
+            fill=self.palette["chart_background"], outline=border, tags="buy_marker",
+        )
+        for row_index in range(2, len(rows) + 1):
+            y = y0 + BUY_TABLE_ROW_HEIGHT * row_index
+            self.canvas.create_line(x0, y, x0 + width, y, fill=border, tags="buy_marker")
+        column_x = x0
+        for column_width in widths[:-1]:
+            column_x += column_width
+            self.canvas.create_line(
+                column_x, y0, column_x, y0 + height, fill=border, tags="buy_marker"
+            )
+
+        def draw_row(cells, row_index: int, colors, cell_font) -> None:
+            y = y0 + BUY_TABLE_ROW_HEIGHT * (row_index + 0.5)
+            x = x0
+            for column, text in enumerate(cells):
+                # The round is centred; numbers line up on their right edge.
+                centred = column == 0 or row_index == 0 or text == BUY_TABLE_EMPTY_CELL
                 self.canvas.create_text(
-                    x + (widths[column] if column else 0),
+                    x + widths[column] / 2 if centred else x + widths[column] - BUY_TABLE_CELL_PADDING,
                     y,
                     text=text,
-                    anchor="e" if column else "w",
-                    fill=fill,
-                    font=font,
+                    anchor="center" if centred else "e",
+                    fill=colors[column],
+                    font=cell_font,
                     tags="buy_marker",
                 )
-                x += widths[column] + BUY_TABLE_COLUMN_GAP
+                x += widths[column]
+
+        text_color = self.palette["text"]
+        draw_row(BUY_TABLE_HEADER, 0, [self.palette["chart_text"]] * 4, font)
+        for row_index, (row, (_label, color, _position, _price)) in enumerate(zip(rows, buys), 1):
+            round_color = readable_text_color(color, background, text_color)
+            draw_row(row, row_index, [round_color, text_color, text_color, text_color], bold)
 
     def _draw_price_tags(
         self,
