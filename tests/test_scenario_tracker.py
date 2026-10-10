@@ -109,7 +109,9 @@ def test_first_buy_this_week_is_reported_and_saved_as_active() -> None:
         ("1차 매수", "1차 매수", "이번 주")
     ]
     assert events[0]["가격"] == 100
+    assert events[0]["눌림회차"] == 1
     assert active["현재상태"] == "보유 중"
+    assert active["눌림회차"] == 1
     assert active["매수차수"] == 1
     assert active["평단가"] == 100
     assert active["다음추가매수가"] == pytest.approx(97.0)

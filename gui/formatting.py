@@ -18,6 +18,7 @@ from watchlist import market_cap_rank_text
 from gui.config import (
     MARKET_CAP_RANK_COLUMN,
     PRICE_COLUMNS,
+    PULLBACK_NUMBER_COLUMN,
     STRONG_RETURN_PERCENT,
     TRADE_HISTORY_DISPLAY_COLUMNS,
 )
@@ -142,6 +143,7 @@ def trade_summary_cards(cases: pd.DataFrame | None) -> dict[str, tuple[str, str]
 def trade_cases_for_display(data: pd.DataFrame) -> pd.DataFrame:
     rename_map = {
         "FirstBuyDate": "1차매수일",
+        "PullbackNumber": PULLBACK_NUMBER_COLUMN,
         "BuyRounds": "매수차수",
         "LastBuyDate": "최근매수일",
         "AveragePrice": "평단가",
@@ -170,6 +172,9 @@ def _format_value(value: object, column: str = "") -> str:
     if isinstance(value, Real):
         if column == "매수차수":
             return f"{int(value)}차"
+        if column == PULLBACK_NUMBER_COLUMN:
+            # 0 means the count is unknown, e.g. state saved by an older version.
+            return f"{int(value)}회차" if value >= 1 else ""
         if column == "보유주수":
             return f"{int(value)}주"
         if column.endswith("수익률") or column.endswith("손익률"):

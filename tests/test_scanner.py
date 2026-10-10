@@ -284,6 +284,48 @@ def test_base_candle_while_holding_does_not_open_second_case() -> None:
     assert list(buys["Round"]) == [1]
 
 
+def test_first_pullback_of_a_cycle_is_pullback_number_one() -> None:
+    cases, _buys, _full = scan_trade_cases(_case_frame([(105, 100)]))
+
+    assert cases.iloc[0]["PullbackNumber"] == 1
+
+
+def test_base_candle_after_a_skipped_pullback_is_pullback_number_two() -> None:
+    data = _frame(
+        [
+            _row(close=99, ma20=100, ma50=101),
+            _row(open_=104, close=105, ma20=102, ma50=101),
+            # First pullback of the cycle, below MA200: counted but not bought.
+            _row(open_=96, close=94, ma5=97, ma20=100, ma50=99, ma150=96, ma200=95),
+            _row(open_=95, close=93, ma5=96, ma20=100, ma50=99, ma150=96, ma200=95),
+            _row(open_=100, close=103, ma5=101, ma20=100, ma50=99),
+            _row(open_=97, close=95, ma5=98, ma20=100, ma50=99),
+        ]
+    )
+
+    cases, _buys, full = scan_trade_cases(data)
+
+    assert list(full["tfmr_pullback_number"]) == [0, 0, 1, 1, 1, 2]
+    assert list(cases["FirstBuyDate"]) == [_week(5)]
+    assert cases.iloc[0]["PullbackNumber"] == 2
+    assert cases.iloc[0]["BuyRounds"] == 1
+
+
+def test_pullback_count_restarts_with_a_new_golden_cross() -> None:
+    rows = [
+        _row(close=99, ma20=100, ma50=101),
+        _row(open_=104, close=105, ma20=102, ma50=101),
+        _row(open_=96, close=94, ma5=97, ma20=100, ma50=99),
+        _row(open_=97, close=98, ma5=97, ma20=98, ma50=100),
+        _row(open_=103, close=104, ma5=103, ma20=101, ma50=100),
+        _row(open_=96, close=94, ma5=97, ma20=100, ma50=99),
+    ]
+
+    cases, _buys, _full = scan_trade_cases(_frame(rows))
+
+    assert list(cases["PullbackNumber"]) == [1, 1]
+
+
 def _base_dates(data: pd.DataFrame) -> list[pd.Timestamp]:
     full = add_buy_base_columns(data)
     return list(full.index[full["tfmr_buy_base"]])

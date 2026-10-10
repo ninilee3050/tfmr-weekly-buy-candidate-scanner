@@ -596,8 +596,14 @@ class ChartPreviewWindow(tk.Toplevel):
             case_text = "최근 3년"
         else:
             sold = _date_text(cycle.get("SellDate"))
+            pullback = cycle.get("PullbackNumber")
+            pullback_text = (
+                f"{int(pullback)}회차 눌림  ·  "
+                if pullback is not None and not pd.isna(pullback) and pullback >= 1
+                else ""
+            )
             case_text = (
-                f"1차 매수 {_date_text(cycle.get('FirstBuyDate'))}  ·  "
+                f"{pullback_text}1차 매수 {_date_text(cycle.get('FirstBuyDate'))}  ·  "
                 f"{int(cycle.get('BuyRounds', 1))}차까지 매수  ·  "
                 + (f"매도 {sold}" if sold != "-" else str(cycle.get("Outcome", "")))
             )

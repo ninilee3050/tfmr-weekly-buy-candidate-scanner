@@ -83,6 +83,8 @@ def test_trade_cases_are_shown_with_korean_columns_and_units() -> None:
     sold = display.iloc[0]
     assert _format_value(sold["1차매수일"], "1차매수일") == "2024-01-15"
     assert _format_value(sold["매수차수"], "매수차수") == "1차"
+    assert _format_value(sold["눌림회차"], "눌림회차") == "1회차"
+    assert _format_value(0, "눌림회차") == ""
     assert _format_value(sold["평단가"], "평단가") == "94.00"
     assert _format_value(sold["수익률"], "수익률") == "+4.26%"
     assert _format_value(sold["보유주수"], "보유주수") == "1주"
