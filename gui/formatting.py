@@ -155,7 +155,7 @@ def trade_cases_for_display(data: pd.DataFrame) -> pd.DataFrame:
         "Outcome": "결과",
         "ReturnPct": "수익률",
         "NetReturnPct": NET_RETURN_COLUMN,
-        "HoldingWeeks": "보유주수",
+        "HoldingWeeks": "보유기간",
     }
     display = data.rename(columns=rename_map).copy()
     if SP500_STATUS_COLUMN not in display.columns:
@@ -179,7 +179,7 @@ def _format_value(value: object, column: str = "") -> str:
         if column == PULLBACK_NUMBER_COLUMN:
             # 0 means the count is unknown, e.g. state saved by an older version.
             return f"{int(value)}회차" if value >= 1 else ""
-        if column == "보유주수":
+        if column == "보유기간":
             return f"{int(value)}주"
         if column.endswith("수익률") or column.endswith("손익률"):
             return f"{value:+.2f}%"

@@ -31,7 +31,7 @@ TRADE_HISTORY_DISPLAY_COLUMNS = [
     "결과",
     "수익률",
     NET_RETURN_COLUMN,
-    "보유주수",
+    "보유기간",
     SP500_STATUS_COLUMN,
 ]
 SCAN_FAILURE_COLUMNS = ["순위", "티커", "회사명", "시가총액", "오류"]
@@ -48,7 +48,7 @@ SCAN_EVENT_DISPLAY_COLUMNS = [
     "평단가",
     "수익률",
     NET_RETURN_COLUMN,
-    "보유주수",
+    "보유기간",
     SP500_STATUS_COLUMN,
     "신호구분",
     "데이터기준일",
@@ -65,7 +65,7 @@ ACTIVE_SCENARIO_DISPLAY_COLUMNS = [
     "다음추가매수가",
     "현재가",
     "평가손익률",
-    "보유주수",
+    "보유기간",
     SP500_STATUS_COLUMN,
     "데이터기준일",
     "데이터상태",
@@ -82,7 +82,7 @@ CLOSED_RESULT_DISPLAY_COLUMNS = [
     "매도가",
     "수익률",
     NET_RETURN_COLUMN,
-    "보유주수",
+    "보유기간",
     SP500_STATUS_COLUMN,
 ]
 CLOSED_SCENARIO_DISPLAY_COLUMNS = [
@@ -97,7 +97,7 @@ CLOSED_SCENARIO_DISPLAY_COLUMNS = [
     "매도가",
     "수익률",
     NET_RETURN_COLUMN,
-    "보유주수",
+    "보유기간",
     SP500_STATUS_COLUMN,
 ]
 TRADE_HISTORY_COLUMN_BOUNDS = {
@@ -111,7 +111,7 @@ TRADE_HISTORY_COLUMN_BOUNDS = {
     "결과": (80, 95),
     "수익률": (80, 95),
     NET_RETURN_COLUMN: (80, 95),
-    "보유주수": (70, 80),
+    "보유기간": (70, 80),
     SP500_STATUS_COLUMN: (90, 108),
 }
 TABLE_FLEX_WEIGHTS = {

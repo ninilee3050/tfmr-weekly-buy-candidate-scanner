@@ -91,6 +91,11 @@ def contrast_ratio(first: str, second: str) -> float:
     return (lighter + 0.05) / (darker + 0.05)
 
 
+def price_tag_text_color(background: str) -> str:
+    """Black or white, whichever reads better on a filled price tag."""
+    return "#000000" if contrast_ratio("#000000", background) >= contrast_ratio("#ffffff", background) else "#ffffff"
+
+
 def readable_text_color(color: str, background: str, text_color: str) -> str:
     """Keep a label's hue but move it toward the text color until it is legible."""
     if not color.startswith("#") or len(color) != 7:
@@ -137,7 +142,11 @@ SIGNAL_STYLES = (
     ("5차", "BuyDate5", "#c2410c"),
     ("매도", "SellDate", "#9333ea"),
 )
-AVERAGE_PRICE_COLOR = SIGNAL_STYLES[0][2]
+# Price levels of a case, drawn to the right edge and tagged on the price axis.
+AVERAGE_PRICE_COLOR = "#f59e0b"
+SELL_PRICE_COLOR = SIGNAL_STYLES[-1][2]
+PRICE_LEVEL_WIDTH = 2
+PRICE_TAG_HEIGHT = 16
 # A trade case lasts a few weeks, so half a year on each side keeps it readable.
 CASE_VIEW_MARGIN = pd.DateOffset(weeks=26)
 
@@ -1096,7 +1105,12 @@ class ChartPreviewWindow(tk.Toplevel):
             )
 
     def _draw_buy_markers(self, panel: Panel, visible: pd.DataFrame) -> None:
-        """Mark the average buy price and, for a sold case, the sell result."""
+        """Draw the average buy price and the sell price as lines to the price axis.
+
+        Each line starts at its week and runs to the right edge, where a
+        coloured tag on the price scale shows the value.  A sold case also
+        gets its return marked at the sell candle.
+        """
         cycle = self.cycle
         if cycle is None or visible.empty:
             return
@@ -1126,36 +1140,30 @@ class ChartPreviewWindow(tk.Toplevel):
         def y_at(value: float) -> float:
             return _map_y(min(high, max(low, value)), low, high, panel)
 
-        text_color = self.palette["text"]
-        background = self.palette["chart_panel"]
-        average = float(average)
-        line_color = readable_text_color(AVERAGE_PRICE_COLOR, background, text_color)
-        end_position = min(
-            self.view_end,
-            sell_position if sell_position is not None else self.view_end,
-        )
-        if low <= average <= high and end_position >= self.view_start:
-            start_x = x_at(position) if position >= self.view_start else left
-            end_x = x_at(end_position) if sell_position is not None else right
-            average_y = y_at(average)
+        levels = [("평단", float(average), position, AVERAGE_PRICE_COLOR)]
+        if sell_position is not None and sell_position <= self.view_end:
+            sell_price = cycle.get("SellPrice")
+            if sell_price is None or pd.isna(sell_price):
+                sell_price = self.data["Close"].iloc[sell_position]
+            levels.append(("매도", float(sell_price), sell_position, SELL_PRICE_COLOR))
+
+        tags: list[tuple[float, str, str]] = []
+        for label, price, start, color in levels:
+            if not low <= price <= high:
+                continue
+            y = y_at(price)
             self.canvas.create_line(
-                start_x,
-                average_y,
-                end_x,
-                average_y,
-                fill=line_color,
-                dash=(5, 3),
-                width=1,
+                x_at(start) if start >= self.view_start else left,
+                y,
+                right,
+                y,
+                fill=color,
+                dash=(8, 4),
+                width=PRICE_LEVEL_WIDTH,
                 tags="buy_marker",
             )
-            # Left of the first buy, clear of the sell marker and its label.
-            self._create_label_with_background(
-                start_x - 6,
-                average_y,
-                text=f"평단 {_number(average)}",
-                anchor="e",
-                fill=line_color,
-            )
+            tags.append((y, f"{label} {price:,.2f}", color))
+        self._draw_price_tags(panel, tags)
 
         value = cycle.get("ReturnPct")
         if (
@@ -1169,19 +1177,54 @@ class ChartPreviewWindow(tk.Toplevel):
         y = y_at(float(self.data["Close"].iloc[sell_position]))
         color = readable_text_color(
             CANDLE_UP_COLOR if float(value) >= 0 else CANDLE_DOWN_COLOR,
-            background,
-            text_color,
+            self.palette["chart_panel"],
+            self.palette["text"],
         )
         self.canvas.create_oval(
             x - 4, y - 4, x + 4, y + 4, outline=color, width=2, tags="buy_marker"
         )
         self._create_label_with_background(
             x,
-            max(panel.top + 14, y - 7),
+            max(panel.top + 14, y - 9),
             text=f"매도 {float(value):+.1f}%",
             anchor="s",
             fill=color,
         )
+
+    def _draw_price_tags(
+        self,
+        panel: Panel,
+        tags: list[tuple[float, str, str]],
+    ) -> None:
+        """Coloured value tags on the price scale; close levels are spread apart."""
+        right = self._plot_edges()[1]
+        previous_y: float | None = None
+        for y, text, color in sorted(tags):
+            if previous_y is not None and y - previous_y < PRICE_TAG_HEIGHT:
+                y = previous_y + PRICE_TAG_HEIGHT
+            y = min(panel.bottom - PRICE_TAG_HEIGHT / 2, max(panel.top + PRICE_TAG_HEIGHT / 2, y))
+            previous_y = y
+            item = self.canvas.create_text(
+                right + 6,
+                y,
+                text=text,
+                anchor="w",
+                fill=price_tag_text_color(color),
+                font=(self.ui_font_family, 8, "bold"),
+                tags="buy_marker",
+            )
+            box = self.canvas.bbox(item)
+            if box:
+                background = self.canvas.create_rectangle(
+                    box[0] - 3,
+                    box[1] - 1,
+                    box[2] + 3,
+                    box[3] + 1,
+                    fill=color,
+                    outline="",
+                    tags="buy_marker",
+                )
+                self.canvas.tag_raise(item, background)
 
     def _create_label_with_background(
         self,

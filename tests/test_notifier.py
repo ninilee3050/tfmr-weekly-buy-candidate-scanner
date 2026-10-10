@@ -46,7 +46,7 @@ def test_message_lists_signals_by_urgency_then_the_cases_still_held() -> None:
         [
             event("AAPL", "Apple Inc.", "1차 매수", 2, 매수차수=1, 가격=245.1),
             event("JPM", "JPMorgan Chase & Co.", "추가매수", 11, 매수차수=2, 가격=321.5),
-            event("BAC", "Bank of America Corporation", "매도", 24, 수익률=2.13, 보유주수=5),
+            event("BAC", "Bank of America Corporation", "매도", 24, 수익률=2.13, 보유기간=5),
         ]
     )
     active = pd.DataFrame(
@@ -133,7 +133,7 @@ def test_watchlist_and_unranked_tickers_show_a_label_instead_of_a_rank() -> None
     events = pd.DataFrame(
         [
             event("BTC-USD", "[관심] 비트코인", "1차 매수", 9000, 가격=60000.0),
-            event("OLD", "Old Company", "매도", 9999, 수익률=-3.0, 보유주수=2),
+            event("OLD", "Old Company", "매도", 9999, 수익률=-3.0, 보유기간=2),
         ]
     )
 

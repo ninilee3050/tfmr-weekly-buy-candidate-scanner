@@ -88,7 +88,7 @@ def test_trade_cases_are_shown_with_korean_columns_and_units() -> None:
     assert _format_value(sold["평단가"], "평단가") == "94.00"
     assert _format_value(sold["수익률"], "수익률") == "+4.26%"
     assert _format_value(sold["실수익률"], "실수익률") == "+4.04%"
-    assert _format_value(sold["보유주수"], "보유주수") == "1주"
+    assert _format_value(sold["보유기간"], "보유기간") == "1주"
     assert _format_value(display.iloc[1]["매도일"], "매도일") == ""
 
 

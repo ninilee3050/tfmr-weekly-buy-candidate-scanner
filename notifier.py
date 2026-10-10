@@ -213,7 +213,7 @@ def _signal_note(row: pd.Series) -> str:
     """What happened: "+2.1% · 5주" for a sell, "2차 · 321.50" for a buy."""
     stage = row.get("단계")
     if stage == SELL_STAGE:
-        return _join_details(_percent_text(row.get("수익률")), _weeks_text(row.get("보유주수")))
+        return _join_details(_percent_text(row.get("수익률")), _weeks_text(row.get("보유기간")))
     if stage == ADD_BUY_STAGE:
         return _join_details(_rounds_text(row.get("매수차수")), _price_text(row.get("가격")))
     return _price_text(row.get("가격"))

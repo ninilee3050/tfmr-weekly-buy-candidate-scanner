@@ -218,7 +218,7 @@ def _column_width(column: str) -> int:
         return 95
     if column == "결과":
         return 110
-    if column in {"매수차수", "보유주수", "눌림회차"}:
+    if column in {"매수차수", "보유기간", "눌림회차"}:
         return 80
     if column in {"가격", "평단가", "매도가", "현재가", "최근매수가"}:
         return 90
