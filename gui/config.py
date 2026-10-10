@@ -17,8 +17,10 @@ LAST_SCAN_TABLE_PATHS = {
     "closed_results": OUTPUT_DIR / "tfmr_last_scan_closed.csv",
     "failures": OUTPUT_DIR / "tfmr_last_scan_failures.csv",
 }
+PULLBACK_NUMBER_COLUMN = "눌림회차"
 TRADE_HISTORY_DISPLAY_COLUMNS = [
     "1차매수일",
+    PULLBACK_NUMBER_COLUMN,
     "매수차수",
     "최근매수일",
     "평단가",
@@ -37,6 +39,7 @@ SCAN_EVENT_DISPLAY_COLUMNS = [
     "회사명",
     "단계",
     "결과",
+    PULLBACK_NUMBER_COLUMN,
     "신호일",
     "가격",
     "평단가",
@@ -52,6 +55,7 @@ ACTIVE_SCENARIO_DISPLAY_COLUMNS = [
     "회사명",
     "현재상태",
     "1차매수일",
+    PULLBACK_NUMBER_COLUMN,
     "매수차수",
     "평단가",
     "다음추가매수가",
@@ -67,6 +71,7 @@ CLOSED_RESULT_DISPLAY_COLUMNS = [
     "티커",
     "회사명",
     "1차매수일",
+    PULLBACK_NUMBER_COLUMN,
     "매수차수",
     "매도일",
     "평단가",
@@ -80,6 +85,7 @@ CLOSED_SCENARIO_DISPLAY_COLUMNS = [
     "티커",
     "회사명",
     "1차매수일",
+    PULLBACK_NUMBER_COLUMN,
     "매수차수",
     "매도일",
     "평단가",
@@ -90,6 +96,7 @@ CLOSED_SCENARIO_DISPLAY_COLUMNS = [
 ]
 TRADE_HISTORY_COLUMN_BOUNDS = {
     "1차매수일": (90, 100),
+    PULLBACK_NUMBER_COLUMN: (70, 80),
     "매수차수": (70, 80),
     "최근매수일": (90, 100),
     "평단가": (80, 95),

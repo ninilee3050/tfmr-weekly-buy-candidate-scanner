@@ -18,6 +18,7 @@ REQUIRED_COLUMNS = ("Open", "Close", "MA_5", "MA_20", "MA_50", "MA_150", "MA_200
 
 TRADE_CASE_COLUMNS = [
     "FirstBuyDate",
+    "PullbackNumber",
     "BuyRounds",
     "LastBuyDate",
     "LastBuyPrice",
@@ -54,15 +55,15 @@ def add_buy_base_columns(data: pd.DataFrame) -> pd.DataFrame:
     """Mark the first buy base candle of each MA20/MA50 rising cycle.
 
     A rising cycle starts when MA20 crosses above MA50 and ends when it
-    crosses back below.  Once a week in the cycle has closed above MA20, a
-    bearish week that closes below both MA5 and MA20 starts a pullback; the
-    next pullback starts only after a week has closed above MA20 again.
+    crosses back below.  Once a week in the cycle has closed above MA20, the
+    first bearish week that closes below both MA5 and MA20 while MA150 > MA200
+    and Close > MA200 is the base candle.  A cycle yields one base candle.
 
-    Only the first pullback of a cycle can be bought.  Its first bearish week
-    with MA150 > MA200 and Close > MA200 is the base candle.  When the first
-    pullback ends without one (the stock was under its 200-week line), the
-    cycle has no base candle: a later pullback is the cycle's second, not a
-    late first.  ``tfmr_pullback_number`` holds the running count.
+    ``tfmr_pullback_number`` counts the pullbacks of the cycle since its
+    golden cross, whether or not they could be bought: a bearish week below
+    MA5 and MA20 starts a new pullback once a week has closed above MA20
+    since the previous one.  A base candle that follows a skipped pullback
+    therefore carries 2 or more.  This is not the buy round of a trade case.
     """
     missing = [column for column in REQUIRED_COLUMNS if column not in data.columns]
     if missing:
@@ -111,7 +112,6 @@ def add_buy_base_columns(data: pd.DataFrame) -> pd.DataFrame:
             elif (
                 close_above_ma20_seen
                 and not buy_recorded_in_cycle
-                and pullback_number == 1
                 and _is_pullback(row)
                 and _is_bearish(row)
                 and _long_trend_ok(row)
@@ -166,7 +166,7 @@ def scan_trade_cases(
 
         if case is None:
             if bool(row["tfmr_buy_base"]):
-                case = _open_case(date, position)
+                case = _open_case(date, position, int(row["tfmr_pullback_number"]))
                 _record_buy(case, buy_rows, date, row["Close"], provisional)
                 full.at[date, "tfmr_buy_round"] = 1
                 full.at[date, "tfmr_holding"] = True
@@ -250,9 +250,14 @@ def _is_sell(row: pd.Series) -> bool:
     )
 
 
-def _open_case(date: pd.Timestamp, position: int) -> dict[str, object]:
+def _open_case(
+    date: pd.Timestamp,
+    position: int,
+    pullback_number: int,
+) -> dict[str, object]:
     return {
         "FirstBuyDate": pd.Timestamp(date).normalize(),
+        "PullbackNumber": pullback_number,
         "FirstBuyPosition": position,
         "BuyRounds": 0,
         "LastBuyDate": pd.NaT,
