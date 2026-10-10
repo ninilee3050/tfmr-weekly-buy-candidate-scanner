@@ -1,445 +1,181 @@
-# TFMR 시나리오 1회차 주봉 매수 후보 스캐너
+# TFMR 매매 시나리오 스캐너
 
-TFMR 전략(Trend Following·Mean Reversion)의 주봉 1회차 매수후보 조건을 과거 확정 주봉과 이번 주 진행 중인 주봉에서 탐지하는 Python Tkinter 스캐너입니다.
+TFMR 전략(Trend Following · Mean Reversion)의 주봉 매매 시나리오를 1차 매수부터 추가매수, 매도까지 추적하는 Python/Tkinter 프로그램입니다.
 
-TFMR 1회차 매수후보 탐지 규칙을 Python 코드가 정확히 이해했는지 확인하기 위한 검증용 GUI 프로그램입니다.
+화면과 자동 스캔의 뼈대는 [MMRM 3단계 주봉 시나리오 추적 스캐너](https://github.com/ninilee3050/mmrm-three-stage-weekly-signal-scanner)에서 가져왔고, 판정 규칙만 TFMR입니다.
 
-이 프로젝트는 자동매매 프로그램이 아닙니다. 주문 실행, 브로커 API 연동, 계좌 연결, 수익률 계산, 보유 상태 추적, 추가매수, 매도 판단은 v1 범위에 포함하지 않습니다.
+이 프로그램은 자동매매나 주문 프로그램이 아닙니다. 신호 탐지, 보유 상태 추적, 과거 결과 확인을 위한 도구이며 매매 추천이나 수익 보장을 목적으로 하지 않습니다.
 
-이 도구는 매매 추천이나 수익 보장을 목적으로 하지 않습니다. 사용자가 정의한 TFMR 매매 시나리오 조건이 주봉 데이터에서 언제 포착되는지 확인하기 위한 탐지용 도구입니다.
+## 매매 규칙 요약
 
-## 현재 목적
+자세한 규칙은 [TFMR 매매 시나리오](docs/tfmr-trade-scenario.md)에 있습니다.
 
-이 프로그램의 v1 목표는 단 하나입니다.
+| 단계 | 조건 | 수량 |
+|---|---|---|
+| 1차 매수 | 20주선 > 50주선 상승 사이클에서, 종가가 20주선 위였던 적이 있은 뒤 종가가 5주선·20주선 아래로 내려온 첫 음봉. 150주선 > 200주선, 종가 > 200주선 | 1주 |
+| 추가매수 | 직전 매수가보다 3% 이상 낮은 음봉. 최대 5차 | N차에 N주 |
+| 매도 | 양봉이면서 종가가 5주선 또는 20주선 위 | 전량 |
 
-`TFMR 1회차 매수후보 조건을 주봉 데이터에서 정확히 찾아낸다.`
-
-기존 표현으로는 아래 목표와 같습니다.
-
-`TFMR 1회차 매수 기준봉 조건을 주봉 데이터에서 정확히 찾아내는지 검증한다.`
-
-주요 사용 방식은 두 가지입니다.
-
-* 개별 티커 검색: 과거 확정 주봉에서 TFMR 1회차 매수후보가 언제 나왔는지 확인
-* Top100 이번주 스캐너: 미국 시가총액 상위 종목 중 이번 주에 새 1회차 매수후보가 생겼는지 확인
-
-이 README에서는 전략 조건에 맞는 지점을 `매수후보`라고 부릅니다.
-
-다만 기존 코드와 CSV 파일명에는 구현 이력상 `buy_points`, `매수포인트`, `매수 기준봉`, `기준봉` 표현이 일부 남아 있을 수 있습니다. 이 표현들은 확정 수익 지점이 아니라, TFMR 시나리오 조건에 맞는 후보 지점을 의미합니다.
+가격은 모두 그 주의 종가입니다. `수익률`은 수수료를 빼기 전이고, `실수익률`은 매수·매도 수수료와 SEC Fee·TAF를 뺀 값입니다. 수수료율은 `trade_fees.py`에 있습니다. 양도소득세와 환전 비용은 넣지 않습니다.
 
 ## 실행 방법
 
-Windows에서 `실행하기.bat`을 더블클릭하면 GUI가 실행됩니다.
+Windows에서 `실행하기.bat`을 더블클릭합니다.
 
-처음 실행 전 Python 패키지가 없다면 아래 명령으로 설치합니다.
+처음 실행하기 전에 필요한 패키지를 설치합니다.
 
 ```powershell
-cd C:\Users\user\Documents\Codex\tfmr-weekly-buy-candidate-scanner
 pip install -r requirements.txt
 ```
 
-직접 GUI를 실행하려면 아래처럼 실행할 수도 있습니다.
+직접 실행할 수도 있습니다.
 
 ```powershell
 python app.py
 ```
 
-명령형 Top100 스캔은 GUI 없이 아래처럼 실행할 수 있습니다.
+화면 없이 통합 스캔만 실행하려면 다음 명령을 씁니다. GitHub Actions 자동 스캔도 이 명령을 씁니다.
 
 ```powershell
-python weekly_scan.py --limit 100 --output-dir outputs
+python weekly_scan.py
 ```
-
-GitHub Actions 같은 자동실행 환경에서는 GUI 창을 띄우는 `app.py` 대신 `weekly_scan.py`를 사용합니다.
 
 ## 화면 구조
 
-Tkinter 기본 스타일의 3단 구조입니다.
+- 왼쪽: 미국 시가총액 Top 100 목록
+- 가운데: 선택 종목 검색, 매매 성과 요약, 매매 기록
+- 오른쪽: TFMR 매매 시나리오 스캐너
 
-* 왼쪽: 미국 시가총액 Top100 목록
-* 중앙: 티커 검색창과 과거 1회차 매수후보 표
-* 오른쪽: Top100 이번주 매수후보 스캐너
+세 영역 사이의 막대를 끌어 폭을 조절할 수 있고, `Top 100 열기`·`Top 100 닫기` 버튼으로 왼쪽 목록을 접을 수 있습니다. `다크 모드`·`라이트 모드` 버튼으로 테마를 바꿉니다. 창 크기와 위치, 영역 폭, 테마, 마지막에 보던 탭은 `outputs/ui_settings.json`에 저장되어 다음 실행 때 복원됩니다.
 
-왼쪽 Top100 표에서 종목을 클릭하면 중앙 검색창에 티커가 자동 입력되고 바로 검색됩니다.
+표의 컬럼 제목을 누르면 그 컬럼으로 정렬합니다. 컬럼 제목이나 요약 카드 위에 마우스를 잠시 멈추면 그 항목의 뜻이 나옵니다.
 
-현재 UI에서는 전체 계산표 탭을 보여주지 않습니다. 사용자는 매수후보만 보고 싶다고 했기 때문에 화면을 단순하게 유지합니다.
+### 선택 종목 매매 기록
 
-기존 코드나 컬럼명에는 `매수 기준봉`, `매수포인트`, `buy_points` 표현이 남아 있을 수 있습니다. 이 README에서는 해당 결과를 TFMR 조건이 포착된 `매수후보`로 해석합니다.
+티커를 검색하면 최신 Yahoo 일봉을 다시 내려받아 월요일 시작 주봉으로 바꾸고, 그 종목의 모든 매매 케이스를 계산합니다. 한 케이스는 1차 매수부터 매도까지입니다.
 
-## 중앙 검색과 오른쪽 스캐너의 차이
+- 요약 카드: 매도 완료 건수, 승률, 평균 실수익률. 승률과 평균은 수수료를 뺀 실수익률 기준입니다.
+- 매매 기록 표: 1차매수일, 눌림회차, 매수차수, 최근매수일, 평단가, 매도일, 매도가, 결과, 수익률, 실수익률, 보유기간, S&P500 상태
+- `눌림회차`는 골든크로스 뒤 몇 번째 눌림에서 1차 매수가 나왔는지이고, `매수차수`는 그 케이스에서 몇 번 샀는지입니다. 서로 다른 숫자입니다.
+- 행 색상: 실수익률 기준으로 수익은 초록, 손실은 빨강, 보유 중은 연한 색. 수익·손실이 5% 이상이면 진한 색입니다.
 
-중앙 티커 검색은 과거 확정 주봉 확인용입니다.
+검색 결과는 `outputs/{티커}_trade_cases.csv`, `outputs/{티커}_trade_buys.csv`, `outputs/{티커}_full_table.csv`에 저장됩니다.
 
-* `load_weekly_data(..., include_current_week=False, force_refresh=True)`를 사용합니다.
-* 검색할 때마다 Yahoo 계열 일봉 데이터를 새로 받아 `data/{TICKER}.csv`를 갱신합니다.
-* 진행 중인 이번 주 주봉은 제외합니다.
-* 과거 확정 주봉에서 TFMR 1회차 매수후보가 언제 나왔는지 확인합니다.
-* 결과는 `outputs/{TICKER}_tfmr_buy_points.csv`에 저장합니다.
+### 차트 미리보기
 
-오른쪽 Top100 스캐너는 이번 주 후보 확인용입니다.
+매매 기록의 한 행을 더블클릭하면 주봉 차트 창이 열립니다. 선택한 케이스의 1차 매수 반년 전부터 매도 반년 후까지를 처음 보여 주고, 보유 중인 케이스는 최신 주까지 보여 줍니다.
 
-* `include_current_week=True`를 사용합니다.
-* 진행 중인 이번 주 주봉을 포함합니다.
-* 미국 시가총액 Top100 종목 중 이번 주에 새 1회차 매수후보가 생겼는지 확인합니다.
-* 결과는 확정 매수지점이 아니라 `이번주 매수후보`입니다.
-* 금요일 종가 전에 조건이 바뀔 수 있습니다.
-* 스캔 결과는 자동 저장하지 않습니다.
-* 사용자가 `스캔 저장하기` 버튼을 눌렀을 때만 다운로드 폴더에 저장합니다.
+- 매수 차수별 세로선(1차 초록 → 5차 진한 주황)과 보라색 매도선
+- 평단가 점선, 매도 지점의 수익률
+- 마우스 휠: 확대·축소 / 드래그: 좌우 이동 / 더블클릭: 처음 범위로 복귀
+- `← 이전`·`다음 →` 버튼과 키보드 방향키: 같은 종목의 이전·다음 케이스
+- `S&P 500 비교 열기`: 같은 기간의 S&P 500 차트를 오른쪽에 함께 표시
 
-저장 파일명:
+### 스캐너
 
-```text
-Downloads/TFMR_Top100_scan_candidates_YYYY-MM-DD.csv
-Downloads/TFMR_Top100_scan_failures_YYYY-MM-DD.csv
-```
+`통합 스캔` 버튼 한 번으로 다음을 합니다.
+
+1. 현재 미국 시가총액 Top 100과 관심종목에서 새 1차 매수를 찾습니다.
+2. 보유 중인 종목의 추가매수와 매도를 확인합니다. 보유 중인 종목은 Top 100에서 빠져도 매도될 때까지 계속 확인합니다.
+3. 다음 스캔을 위해 보유 상태를 저장합니다.
+
+스캐너 위의 카드 네 개는 `이번 스캔 신규 1차`, `이번 스캔 추가매수`, `이번 스캔 매도 신호`, `보유 중`입니다. 카드를 누르면 해당 탭으로 이동합니다.
+
+탭:
+
+- `이번 스캔 신호`: 이번 주 또는 지난 스캔 이후 놓친 주에 나온 신호. 매도(빨강), 추가매수(주황), 1차 매수(초록) 순서입니다.
+- `보유 중`: 1차 매수 뒤 아직 매도되지 않은 종목. 매수차수, 평단가, 다음 추가매수 가격, 현재가, 평가손익률을 보여 줍니다.
+- `이번 스캔 매도`: 이번 스캔에서 매도가 확정된 케이스
+- `매도 완료`: 현재 Top 100 전 종목의 과거 매도 완료 케이스
+- `오류`: 재시도 후에도 데이터를 받지 못한 종목
+- `관심종목`: Top 100 밖의 종목을 추가하거나 삭제합니다.
+
+표의 종목을 누르면 그 종목을 검색하고, 더블클릭하면 차트까지 엽니다.
+
+## 관심종목
+
+`관심종목` 탭에서 야후 파이낸스 티커(예: ETF `SCHD`, 비트코인 `BTC-USD`)를 추가하면 프로젝트 폴더의 `watchlist.txt`에 저장되고, 다음 통합 스캔부터 Top 100과 함께 검사합니다. 금요일 자동 스캔은 GitHub에 올라간 `watchlist.txt`를 기준으로 합니다.
 
 ## 데이터 기준
 
-* 가격 데이터는 Yahoo 계열 일봉 데이터를 사용합니다.
-* Yahoo의 `1wk` 주봉을 그대로 쓰지 않습니다.
-* 일봉 데이터를 직접 월요일 시작 기준 주봉으로 묶습니다.
-* 주봉 날짜는 해당 주봉의 시작일, 즉 월요일 날짜입니다.
-* 가격 기준은 `Close`입니다.
-* MA5, MA20, MA50, MA150, MA200은 모두 주봉 `Close` 기준 SMA입니다.
-* EMA는 사용하지 않습니다.
-* 거래량은 v1 매수후보 조건에 포함하지 않습니다.
-* MA150과 MA200이 계산되지 않는 종목은 TFMR 검사 대상에서 제외됩니다.
-* 개별 티커 검색은 진행 중인 이번 주 주봉을 제외합니다.
-* Top100 이번주 스캐너와 `weekly_scan.py`는 진행 중인 이번 주 주봉까지 포함합니다.
+- Yahoo 일봉을 내려받아 월요일 시작 주봉으로 직접 묶습니다. Yahoo의 `1wk` 주봉은 쓰지 않습니다.
+- 주봉 날짜는 그 주의 월요일입니다.
+- 스캔과 검색은 진행 중인 이번 주 주봉까지 포함합니다. 금요일 종가 전의 신호는 잠정이며 종가에서 사라질 수 있습니다.
+- 시가총액 Top 100은 StockAnalysis의 [NASDAQ 상장 종목](https://stockanalysis.com/list/nasdaq-stocks/)과 [NYSE 상장 종목](https://stockanalysis.com/list/nyse-stocks/) 목록을 합쳐 시가총액순으로 다시 매깁니다. 미국 거래소에 상장된 해외 기업(ADR)도 포함하고, 우선주는 뺍니다.
+- 마지막으로 불러온 Top 100은 `data/top100_cache.json`에 저장합니다. 순위 사이트를 읽지 못하면 저장한 목록으로 스캔을 계속하고 경고를 표시합니다.
+- `매도 완료` 탭과 선택 종목 성과는 현재 살아 있는 종목의 과거 결과입니다. 과거 각 시점의 Top 100을 복원한 통계가 아니므로 실제보다 좋게 보입니다.
+- Yahoo와 다른 차트 서비스는 원천 데이터와 가격 보정이 달라 봉과 이동평균이 조금 다를 수 있습니다.
 
-주봉 OHLCV는 아래 기준으로 만듭니다.
+## 금요일 자동 스캔과 텔레그램 알림
 
-* Open: 해당 주 첫 거래일 시가
-* High: 해당 주 최고가
-* Low: 해당 주 최저가
-* Close: 해당 주 마지막 거래일 종가
-* Volume: 해당 주 거래량 합계
-* Adj Close: 해당 주 마지막 거래일 수정종가
+`.github/workflows/weekly-scan.yml`이 GitHub Actions에서 `weekly_scan.py`를 실행합니다.
 
-`data/{TICKER}.csv` 파일은 다음 실행을 빠르게 하기 위한 캐시입니다. 사용자가 직접 CSV를 준비하지 않아도 됩니다.
+| 시각 | 내용 |
+|---|---|
+| 금요일 14:17 한국 시간 | 잠정 스캔. 목요일 종가 기준이며 보유 상태는 저장하지 않습니다. |
+| 금요일 16:30 뉴욕 시간 | 확정 스캔. 금요일 종가 기준이며 보유 상태를 저장합니다. |
+| 화요일 16:30 뉴욕 시간 | 스캔 없이 저장된 보유 상태만 다시 저장합니다(캐시 유지). |
 
-기존에 저장된 캐시가 월요일 라벨 주봉이 아니면 예전 방식 캐시로 보고 무시한 뒤 새로 다운로드합니다.
+GitHub은 예약 실행을 늦게 시작하는 일이 잦습니다.
 
-이 방식은 Investing.com 주봉 화면과 최대한 맞추기 위한 선택입니다. 다만 Yahoo와 Investing.com의 원천 데이터, 배당/분할 보정, 지표 계산식이 다르면 완전히 100% 같지 않을 수 있습니다.
+텔레그램 알림을 받으려면 GitHub 저장소의 `Settings → Secrets and variables → Actions`에 다음 두 값을 넣습니다. 값이 없으면 스캔만 하고 알림은 보내지 않습니다.
 
-## Top100 목록 기준
+- `TELEGRAM_BOT_TOKEN`: 봇 토큰
+- `TELEGRAM_CHAT_ID`: 알림을 받을 채팅 ID
 
-Top100 목록은 `StockAnalysis`의 시가총액 순위 페이지를 실시간으로 조회합니다.
+알림 형식:
 
 ```text
-https://stockanalysis.com/list/biggest-companies/
+📈 TFMR 주간 스캔 · 10/16 (금) · 확정
+
+🔴 매도 신호 1건
+▸ 70 BHP (BHP) — +2.1% · 2주
+
+🟠 추가매수 1건
+▸ 32 BAC (Bank of America) — 2차 · 53.75
+
+🟢 신규 1차 매수 1건
+▸ 16 JPM (JPMorgan Chase) — 332.38
+
+보유 중 2건
+▸ 90 SCHW (The Charles Sch…) — 1차 · -2.4%
+▸ 95 NEE (NextEra Energy) — 3차 · -1.8%
 ```
 
-중요한 결정:
+보유 상태는 Actions 캐시에 `outputs/tfmr_active_scenarios.csv`로 보관합니다. 스캔 결과 CSV는 실행 화면의 `Artifacts`에서 30일 동안 내려받을 수 있습니다.
 
-* 내장 fallback Top100 목록은 사용하지 않습니다.
-* 실시간 조회에 실패하면 목록을 비워두고 오류를 보여줍니다.
-* `weekly_scan.py`도 Top100 실시간 조회 실패 시 기본 목록으로 대체하지 않고 실패합니다.
-* 이 구현은 기존 완성본 레포 `ninilee3050/weekly-buy-point-scanner`의 Top100 방식과 맞춘 것입니다.
-* 현재 새 구조에서는 MMRM 레포 `ninilee3050/mmrm-weekly-buy-candidate-scanner`와도 같은 Top100 운용 기준을 공유합니다.
+GitHub은 60일 동안 커밋이 없는 저장소의 예약 실행을 자동으로 끕니다. 꺼졌으면 저장소의 `Actions` 탭에서 워크플로를 다시 켭니다.
 
-주의:
-
-* 이전에는 `CompaniesMarketCap` 기반 파서를 시도했지만, 사이트 표 구조 변경과 Windows HTTPS 문제 때문에 실패했습니다.
-* GUI에서 PowerShell/curl을 subprocess로 호출하는 우회도 시도했지만 CMD 창이 순간적으로 뜨는 부작용이 있어 제거했습니다.
-* 현재는 참고 레포와 같은 `urllib.request + StockAnalysis HTML table parser` 방식입니다.
-
-## 기준 시나리오
-
-TFMR v1에서 1회차 매수후보는 아래 흐름을 모두 만족하는 첫 음봉 주봉입니다.
-
-기존 표현으로는 `1회차 매수 기준봉`이며, 이 README에서는 확정 수익 지점이 아니라 전략 조건에 맞는 `1회차 매수후보`로 표현합니다.
-
-1. MA20이 MA50을 골든크로스해서 상승 사이클이 시작되어야 합니다.
-2. 골든크로스는 `이전 주 MA20 <= 이전 주 MA50` 그리고 `현재 주 MA20 > 현재 주 MA50`입니다.
-3. 상승 사이클 종료는 `이전 주 MA20 >= 이전 주 MA50` 그리고 `현재 주 MA20 < 현재 주 MA50`입니다.
-4. 상승 사이클이 시작된 뒤 `Close > MA20`인 주봉 이력이 한 번 이상 있어야 합니다.
-5. 이후 `Close < MA5` 그리고 `Close < MA20`인 눌림 상태가 발생해야 합니다.
-6. 그 눌림 안에서 첫 번째 음봉이 나오면 그 주봉을 1회차 매수후보로 기록합니다.
-7. 음봉 기준은 `Close < Open`입니다.
-8. 눌림 상태가 먼저 발생했더라도 그 주가 양봉이면 기록하지 않고 관찰을 유지합니다.
-9. 같은 눌림 안에서 이후 첫 음봉이 나오면 그 주봉을 기록합니다.
-10. 음봉이 나오기 전에 `Close > MA20`으로 회복하면 해당 눌림은 무효 처리합니다.
-11. `MA150 > MA200`이어야 합니다.
-12. 같은 상승 사이클에서 이미 1회차 매수후보가 기록됐으면 이후 눌림은 v1에서 무시합니다.
-13. 새 1회차 후보를 다시 찾으려면 상승 사이클 종료 후 새 골든크로스가 다시 나와야 합니다.
-
-모든 비교는 엄격 비교입니다. 같은 값은 조건 만족으로 보지 않습니다.
-
-예:
-
-* `Close = MA20`이면 `Close > MA20`도 아니고 `Close < MA20`도 아닙니다.
-* `Close = Open`이면 음봉이 아닙니다.
-* `MA150 = MA200`이면 장기추세 정배열이 아닙니다.
-
-ConditionSummary 문구:
+## 파일 구조
 
 ```text
-1회차 매수후보: MA20>MA50 상승사이클 + Close>MA20 이력 + Close<MA5/MA20 + 음봉 + MA150>MA200
+app.py                 프로그램 창
+gui/                   화면 영역별 코드
+chart_preview.py       주봉 차트 창
+scanner.py             TFMR 판정 규칙 (가장 중요한 파일)
+trade_fees.py          실수익률에 쓰는 수수료율
+scenario_tracker.py    보유 상태 저장과 이번 스캔 신호 정리
+weekly_scan.py         화면 없는 통합 스캔
+notifier.py            텔레그램 알림
+data_provider.py       Yahoo 일봉 → 주봉
+indicators.py          이동평균과 보조지표
+market_cap_provider.py 시가총액 Top 100
+market_context.py      S&P 500 상태
+watchlist.py           관심종목
+docs/                  매매 규칙 문서
+tests/                 pytest 테스트
 ```
 
-기존 코드나 CSV에 남아 있는 표현과 맞춰야 할 경우 아래 기존 문구도 같은 의미로 해석합니다.
-
-```text
-1회차 기준봉: MA20>MA50 상승사이클 + Close>MA20 이력 + Close<MA5/MA20 + 음봉 + MA150>MA200
-```
-
-## 출력 파일
-
-개별 티커 검색 결과는 `outputs/` 폴더에 저장됩니다.
-
-```text
-outputs/{TICKER}_tfmr_buy_points.csv
-```
-
-Top100 스캐너 결과는 `스캔 저장하기` 버튼을 눌렀을 때 사용자 다운로드 폴더에 저장됩니다.
-
-```text
-Downloads/TFMR_Top100_scan_candidates_YYYY-MM-DD.csv
-Downloads/TFMR_Top100_scan_failures_YYYY-MM-DD.csv
-```
-
-`weekly_scan.py`로 화면 없이 자동 스캔을 실행하면 아래 파일이 프로젝트 `outputs/` 폴더에 저장됩니다.
-
-```text
-outputs/TFMR_Top100_scan_candidates_YYYY-MM-DD.csv
-outputs/TFMR_Top100_scan_failures_YYYY-MM-DD.csv
-```
-
-CSV는 Excel에서 한글이 잘 보이도록 `utf-8-sig`로 저장합니다.
-
-## 파일 구조와 역할
-
-```text
-README.md
-requirements.txt
-app.py
-data_provider.py
-market_cap_provider.py
-tfmr_scanner.py
-weekly_scan.py
-data/
-outputs/
-tests/
-실행하기.bat
-```
-
-각 파일 역할:
-
-* `app.py`: Tkinter GUI. 3단 화면, 티커 검색, Top100 목록, Top100 스캔, CSV 저장 UI를 담당합니다.
-* `data_provider.py`: Yahoo 계열 일봉 데이터를 받아 월요일 시작 주봉으로 변환합니다. 중앙 검색과 스캐너의 이번 주 포함 여부도 여기서 처리합니다.
-* `market_cap_provider.py`: StockAnalysis 실시간 Top100 표를 파싱합니다. fallback 목록을 두지 않습니다.
-* `tfmr_scanner.py`: TFMR v1 핵심 판정 로직입니다. 가장 중요한 파일입니다.
-* `weekly_scan.py`: GUI 없이 Top100 이번주 후보 스캔을 실행하는 명령형 파일입니다.
-* `tests/`: pytest 테스트입니다. TFMR 상태 추적과 데이터 처리 차이를 검증합니다.
-* `data/`: 내려받은 티커별 주봉 캐시 CSV가 생깁니다. `.gitignore`로 실제 CSV는 제외됩니다.
-* `outputs/`: 개별 티커 검색 결과 CSV가 생깁니다. `.gitignore`로 실제 CSV는 제외됩니다.
-* `실행하기.bat`: Windows 더블클릭 실행용 파일입니다.
-
-GitHub에 올리지 않는 파일:
-
-```text
-__pycache__/
-*.pyc
-.pytest_cache/
-data/*.csv
-outputs/*.csv
-```
-
-`data/.gitkeep`와 `outputs/.gitkeep`는 빈 폴더를 GitHub에 유지하기 위한 파일입니다.
-
-## 중요한 구현 메모
-
-다음 세션에서 이어 작업할 때 특히 아래를 먼저 확인하세요.
-
-* TFMR 조건을 바꾸는 작업이 아니라면 `tfmr_scanner.py`의 핵심 상태 추적 로직은 건드리지 않는 것이 좋습니다.
-* 중앙 검색은 최신 확정 주봉 누락을 막기 위해 반드시 `force_refresh=True`를 유지해야 합니다.
-* 중앙 검색은 `include_current_week=False`를 유지해야 합니다.
-* 오른쪽 스캐너는 `include_current_week=True`를 유지해야 합니다.
-* Top100은 실시간 조회 실패 시 fallback을 쓰지 않는 것이 현재 확정 기준입니다.
-* `data/*.csv`, `outputs/*.csv`, `__pycache__/`, `.pytest_cache/`는 GitHub에 올리지 않습니다.
-* UI는 전체화면 강제 실행이 아니라 기본 창 크기와 패널 minsize로 컬럼이 보이도록 조정되어 있습니다.
-* 기존 코드나 출력 파일명에 `buy_points`, `매수포인트`, `기준봉` 표현이 남아 있더라도 README에서는 이를 `매수후보`로 해석합니다.
-* 사용자가 “세이브포인트”라고 말하면 Git 커밋을 의미합니다.
-* 사용자가 “푸시”라고 말하면 로컬 커밋을 GitHub에 업로드하는 것을 의미합니다.
-
-## UI 크기 관련 메모
-
-표 컬럼이 잘리지 않도록 `app.py`에서 기본 창과 컬럼 폭을 넓혀둔 상태입니다.
-
-* 기본 창 크기: `2920x900`
-* 최소 창 크기: `2200x720`
-* 왼쪽 패널 minsize: `470`
-* 중앙 패널 minsize: `1120`
-* 오른쪽 패널 minsize: `1280`
-
-컬럼 폭은 `_column_width()`에서 관리합니다.
-
-UI 관련 수정이 필요하면 `app.py`의 `_build_layout()`, `_create_top100_table()`, `_column_width()`를 먼저 확인하세요.
+`data/`와 `outputs/`의 CSV·JSON 파일은 실행 결과이므로 GitHub에 올리지 않습니다.
 
 ## 테스트
 
-테스트 실행:
-
-```powershell
-pytest
-```
-
-또는 pytest가 PATH에 없다면:
-
 ```powershell
 python -m pytest
 ```
 
-현재 테스트가 검증하는 주요 내용:
+## 아직 넣지 않은 것
 
-* MA20/MA50 골든크로스 계산
-* 상승 사이클 종료 계산
-* Close > MA20 이력이 없으면 후보가 나오지 않는 것
-* 눌림 상태가 양봉이면 기록하지 않는 것
-* 같은 눌림 안에서 이후 첫 음봉이 나오면 기록하는 것
-* 음봉 전 Close > MA20 회복 시 눌림 관찰이 리셋되는 것
-* MA150 > MA200 조건
-* 같은 상승 사이클에서는 첫 번째 후보만 기록하는 것
-* 상승 사이클 종료 후 새 골든크로스가 나오면 새 후보를 다시 찾는 것
-* 중앙 검색은 진행 중인 이번 주를 제외하고, 오른쪽 스캐너는 포함하는 것
-* Top100 실시간 조회 실패 시 fallback을 반환하지 않는 것
-* 중앙 검색 호출 경로가 `force_refresh=True`를 사용하는 것
-* StockAnalysis Top100 표 파싱
-
-## GitHub Actions 자동 스캔
-
-이 레포에는 `.github/workflows/weekly-scan.yml` 워크플로가 있습니다.
-
-동작 방식:
-
-* 수동 실행: GitHub 레포의 `Actions` 탭에서 `TFMR Top 100 Weekly Candidate Scan` 워크플로를 선택한 뒤 `Run workflow`를 누릅니다.
-* 자동 실행: 워크플로 파일에 설정된 cron 시간에 실행됩니다.
-* 실행 명령: `python weekly_scan.py --limit 100 --output-dir outputs`
-* 저장 방식: 결과 CSV를 레포에 커밋하지 않고, GitHub Actions artifact로 업로드합니다.
-* artifact 이름: `tfmr-top100-scan-results`
-* 보관 기간: 30일
-
-업로드되는 파일:
-
-```text
-outputs/TFMR_Top100_scan_candidates_YYYY-MM-DD.csv
-outputs/TFMR_Top100_scan_failures_YYYY-MM-DD.csv
-```
-
-주의:
-
-* GitHub Actions의 cron은 UTC 기준입니다.
-* 스캔 결과 CSV는 GitHub 저장소 파일 목록에 자동 커밋되지 않습니다.
-* 결과는 해당 Actions 실행 화면의 `Artifacts` 영역에서 다운로드합니다.
-* GitHub 로그인 없이 Actions artifact를 직접 다운로드하기는 어렵습니다.
-* Top100 목록 조회나 Yahoo 데이터 다운로드가 실패해도 failures CSV가 artifact에 같이 올라가도록 `if: always()`를 사용합니다.
-
-## v1에서 의도적으로 제외한 기능
-
-아래 기능은 TFMR 전체 전략에는 필요할 수 있지만 v1에서는 구현하지 않습니다.
-
-* N번째 눌림 탐지
-* 추가매수 차수 계산
-* 매도 날짜 계산
-* 수익률 계산
-* 보유 상태 추적
-* 자금 배분 계산
-* 브로커 주문 연동
-* 자동매매 실행
-* 백테스팅
-
-향후 v2에서는 1회차 매수후보 탐지가 충분히 안정화된 뒤 추가매수와 매도 흐름 계산을 확장할 수 있습니다.
-
-기존 표현으로는 아래와 같은 의미입니다.
-
-`향후 v2에서는 1회차 기준봉 탐지가 충분히 안정화된 뒤 추가매수와 매도 흐름 계산을 확장할 수 있습니다.`
-
-## 문제 해결
-
-Top100 목록이 안 불러와질 때:
-
-* 인터넷 연결을 확인합니다.
-* `https://stockanalysis.com/list/biggest-companies/` 접속이 가능한지 확인합니다.
-* `market_cap_provider.py`의 `parse_stockanalysis_market_cap_table()` 테스트를 확인합니다.
-* 참고 레포 `ninilee3050/weekly-buy-point-scanner`의 `market_cap_provider.py`와 비교하면 됩니다.
-* 새 구조에서는 MMRM 레포 `ninilee3050/mmrm-weekly-buy-candidate-scanner`의 `market_cap_provider.py`도 참고할 수 있습니다.
-
-티커 검색이 실패할 때:
-
-* Yahoo 계열 데이터 다운로드가 막혔는지 확인합니다.
-* 티커가 Yahoo에서 쓰는 형식인지 확인합니다.
-* 예: `BRK.B` 같은 티커는 Yahoo에서 `BRK-B` 형태가 필요할 수 있습니다.
-
-pytest가 없을 때:
-
-```powershell
-pip install -r requirements.txt
-python -m pytest
-```
-
-## GitHub 업로드 메모
-
-현재 GitHub 레포:
-
-```text
-https://github.com/ninilee3050/tfmr-weekly-buy-candidate-scanner
-```
-
-레포 이름:
-
-```text
-tfmr-weekly-buy-candidate-scanner
-```
-
-초기 업로드 커밋:
-
-```text
-f80b4f3 Initial TFMR buy base scanner
-```
-
-초기 커밋 메시지에는 이전 명칭인 `buy base` 표현이 남아 있을 수 있습니다. 현재 README와 레포 이름에서는 `buy candidate` 표현을 사용합니다.
-
-Codex 샌드박스에서 `git init`을 한 뒤 Windows 사용자로 Git을 실행하면 dubious ownership 경고가 날 수 있습니다. 이 경우 사용자가 아래 명령을 한 번 실행했습니다.
-
-```powershell
-git config --global --add safe.directory C:/Users/user/Documents/Codex/tfmr-weekly-buy-candidate-scanner
-```
-
-레포 이름 변경 전 경로를 기준으로는 아래 명령을 사용한 이력이 있을 수 있습니다.
-
-```powershell
-git config --global --add safe.directory C:/Users/user/Documents/Codex/tfmr-buy-base-scanner
-```
-
-사용자가 혼자 쓰는 프로젝트라 현재는 `main` 브랜치에 직접 커밋하고 푸시하는 흐름을 사용합니다.
-
-## 다음 세션 시작 체크리스트
-
-다른 Codex 세션에서 이어 작업한다면 먼저 아래 순서로 확인하면 됩니다.
-
-1. `git status -sb`로 작업 트리 상태 확인
-2. `README.md`의 이 섹션을 읽고 현재 설계 기준 확인
-3. Top100 관련이면 `market_cap_provider.py`와 참고 레포의 동일 파일 비교
-4. TFMR 판정 관련이면 `tfmr_scanner.py`와 `tests/test_tfmr_scanner.py` 먼저 확인
-5. UI 관련이면 `app.py`의 `_build_layout()`, `_create_top100_table()`, `_column_width()` 확인
-6. 데이터 포함/제외 관련이면 `data_provider.py`의 `include_current_week` 흐름 확인
-7. GitHub Actions 관련이면 `.github/workflows/weekly-scan.yml`의 cron, 실행 명령, artifact 설정 확인
-8. 변경 후 가능하면 `pytest` 실행
-
-## 다음 작업 시 특히 유지할 기준
-
-* 이 프로그램은 TFMR 주봉 1회차 매수후보 탐지를 목표로 합니다.
-* 자동매매, 추천, 수익 보장 도구가 아닙니다.
-* Yahoo `1wk` 원본 주봉은 그대로 쓰지 않습니다.
-* Yahoo 일봉 데이터를 받아 월요일 시작 주봉으로 직접 재구성합니다.
-* 중앙 검색은 과거 확정 주봉 기준입니다.
-* 중앙 검색은 `include_current_week=False`를 유지합니다.
-* 중앙 검색은 최신 확정 주봉 누락 방지를 위해 `force_refresh=True`를 유지합니다.
-* Top100 스캐너는 이번 주 진행 중인 주봉까지 포함합니다.
-* Top100 스캐너는 `include_current_week=True`를 유지합니다.
-* Top100 목록은 StockAnalysis에서 실시간 조회합니다.
-* Top100 조회 실패 시 fallback 목록을 쓰지 않습니다.
-* TFMR 조건의 엄격 비교 기준을 유지합니다.
-* MA150과 MA200이 계산되지 않는 종목은 TFMR 검사 대상에서 제외합니다.
-* 1회차 후보 탐지가 안정화되기 전에는 추가매수, 매도, 수익률 계산, 자동매매 기능을 섞지 않습니다.
+- 최소 수수료, 양도소득세, 환전 비용을 반영한 손익
+- 실제 체결 내역을 적는 매매기록장
+- 브로커 연동, 자동 주문

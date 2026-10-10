@@ -1,10 +1,21 @@
-name: TFMR Weekly Top 100 Buy Candidate Scan
+name: TFMR Weekly Trade Scenario Scan
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 19 * * 5"
+    # Friday after the US close: the real weekly scan.
+    - cron: "30 16 * * 5"
+      timezone: "America/New_York"
+    # Friday afternoon in Korea (before the US open): provisional results
+    # from Thursday's close, so buy orders for the close can be placed that
+    # evening. Scheduled early because GitHub starts scheduled runs hours
+    # late; it must arrive by about 21:00 KST. Never changes tracking state.
+    - cron: "17 14 * * 5"
       timezone: "Asia/Seoul"
+    # Tuesday: only restores and re-saves the tracking state so the Actions
+    # cache (dropped after 7 unused days) is never older than 4 days.
+    - cron: "30 16 * * 2"
+      timezone: "America/New_York"
 
 permissions:
   contents: read
@@ -12,7 +23,7 @@ permissions:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
@@ -26,16 +37,45 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run TFMR Top100 scanner
-        run: python weekly_scan.py --limit 100 --output-dir outputs
+      - name: Restore active scenario state
+        id: restore
+        uses: actions/cache/restore@v4
+        with:
+          # The tracking state and the last good Top 100 list (fallback when
+          # the ranking site cannot be read) travel together between runs.
+          path: |
+            outputs/tfmr_active_scenarios.csv
+            data/top100_cache.json
+          key: tfmr-active-state-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            tfmr-active-state-
 
-      - name: Upload TFMR scan results
-        if: always()
+      - name: Run weekly scanner
+        if: github.event.schedule != '30 16 * * 2'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TFMR_STATE_RESTORED: ${{ steps.restore.outputs.cache-matched-key != '' }}
+        run: python weekly_scan.py
+
+      - name: Save active scenario state
+        if: always() && hashFiles('outputs/tfmr_active_scenarios.csv') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            outputs/tfmr_active_scenarios.csv
+            data/top100_cache.json
+          key: tfmr-active-state-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Upload scan results
+        if: always() && github.event.schedule != '30 16 * * 2'
         uses: actions/upload-artifact@v4
         with:
-          name: tfmr-weekly-top-100-buy-candidate-scan-results
+          name: tfmr-weekly-scan-${{ github.run_number }}
           path: |
-            outputs/TFMR_Top100_scan_candidates_*.csv
-            outputs/TFMR_Top100_scan_failures_*.csv
+            outputs/signal_events_*.csv
+            outputs/active_scenarios_*.csv
+            outputs/closed_results_*.csv
+            outputs/scan_failures_*.csv
           if-no-files-found: warn
           retention-days: 30
